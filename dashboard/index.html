@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>TobaccoShield — Doctor Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header>
+  <h1>TobaccoShield <span class="sub">Doctor Dashboard</span></h1>
+  <div id="userBox" class="hidden">
+    <span id="whoami"></span>
+    <button id="logoutBtn">Log out</button>
+  </div>
+</header>
+
+<!-- LOGIN VIEW -->
+<section id="loginView" class="panel">
+  <h2>Log in</h2>
+  <form id="loginForm">
+    <label>Username <input type="text" id="loginUsername" required /></label>
+    <label>Password <input type="password" id="loginPassword" required /></label>
+    <button type="submit">Log in</button>
+  </form>
+  <p class="hint">
+    No account yet? Use the API's <code>/auth/register</code> endpoint (or
+    <code>scripts/seed_fake_data.py</code>) to create a doctor / health_worker user first.
+  </p>
+  <p id="loginError" class="error hidden"></p>
+</section>
+
+<!-- MAIN APP VIEW -->
+<main id="appView" class="hidden">
+  <section class="panel">
+    <div class="toolbar">
+      <h2>Case Queue</h2>
+      <label>Filter status:
+        <select id="statusFilter">
+          <option value="">All</option>
+          <option value="captured">Captured</option>
+          <option value="quality_failed">Quality Failed</option>
+          <option value="quality_passed">Quality Passed</option>
+          <option value="risk_assessed">Risk Assessed (needs review)</option>
+          <option value="doctor_reviewed">Doctor Reviewed</option>
+        </select>
+      </label>
+      <button id="refreshBtn">Refresh</button>
+    </div>
+    <table id="caseTable">
+      <thead>
+        <tr><th>Patient</th><th>Status</th><th>Risk</th><th>Quality</th><th>Created</th><th></th></tr>
+      </thead>
+      <tbody id="caseTableBody"></tbody>
+    </table>
+  </section>
+
+  <section class="panel hidden" id="caseDetail">
+    <button id="closeDetailBtn">&larr; Back to queue</button>
+    <h2>Case Detail</h2>
+    <div class="case-grid">
+      <div class="case-image-col">
+        <img id="caseImage" alt="capture" />
+        <img id="caseHeatmap" alt="heatmap overlay" class="hidden" />
+      </div>
+      <div class="case-info-col">
+        <h3>Quality Audit</h3>
+        <div id="qualityBlock"></div>
+
+        <h3>AI Risk Assessment</h3>
+        <div id="riskBlock"></div>
+
+        <h3>Doctor Review</h3>
+        <div id="reviewHistory"></div>
+
+        <form id="reviewForm">
+          <label>Action
+            <select id="reviewAction">
+              <option value="accept">Accept AI result</option>
+              <option value="override">Override risk category</option>
+              <option value="comment">Comment only</option>
+            </select>
+          </label>
+          <label id="overrideCategoryWrap" class="hidden">Override to
+            <select id="overrideCategory">
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+            </select>
+          </label>
+          <label>Comment
+            <textarea id="reviewComment" rows="3" placeholder="Optional notes for the record"></textarea>
+          </label>
+          <button type="submit">Submit review</button>
+        </form>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

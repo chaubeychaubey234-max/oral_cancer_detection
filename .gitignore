@@ -1,17 +1,15 @@
-# Python
-venv/
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-.Python
-*.so
+.env
+*.db
+uploads/images/*.jpg
+uploads/images/*.jpeg
+uploads/images/*.png
+uploads/heatmaps/*.png
+!uploads/images/.gitkeep
+!uploads/heatmaps/.gitkeep
+tests/test_uploads/
+tests/test_tobaccoshield.db
+.venv/
+venv/
 .pytest_cache/
-
-# OS / IDE
-.DS_Store
-.vscode/
-.idea/
-
-# Local sample generated outputs if any temporary
-*.log

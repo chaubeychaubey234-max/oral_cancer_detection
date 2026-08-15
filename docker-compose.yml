@@ -1,0 +1,23 @@
+# Optional. The app runs fine on plain SQLite with zero setup (see README.md) -
+# use this only if you want to test against Postgres locally, matching the
+# CREATE TABLE sketch in INTEGRATION_GUIDE.md more closely for Member C/D demos.
+#
+# Usage:
+#   docker compose up -d
+#   DATABASE_URL=postgresql+psycopg2://tobaccoshield:tobaccoshield@localhost:5432/tobaccoshield \
+#     uvicorn app.main:app --reload
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tobaccoshield
+      POSTGRES_PASSWORD: tobaccoshield
+      POSTGRES_DB: tobaccoshield
+    ports:
+      - "5432:5432"
+    volumes:
+      - tobaccoshield_pgdata:/var/lib/postgresql/data
+
+volumes:
+  tobaccoshield_pgdata:
