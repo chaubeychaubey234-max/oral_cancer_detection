@@ -4,7 +4,7 @@ Exposes REST endpoints for Member A (Mobile App) and Member D (Backend Service).
 Supports both multipart/form-data image uploads and Base64 JSON payloads.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -54,6 +54,10 @@ class QualityCheckResponse(BaseModel):
         None,
         description="First failing check reason ('blur', 'underexposed', 'overexposed', 'glare', 'bad_framing', or null on pass)",
     )
+    all_failed_reasons: List[str] = Field(
+        default_factory=list,
+        description="List of all checks that failed (e.g. ['blur', 'bad_framing'])",
+    )
     scores: QualityScores = Field(..., description="Complete metrics for all 4 quality checks.")
     timestamp: str = Field(..., description="ISO8601 UTC timestamp of inspection.")
     module_version: str = Field(..., description="Module release version.")
@@ -64,6 +68,7 @@ class QualityCheckResponse(BaseModel):
             "example": {
                 "pass": True,
                 "reason": None,
+                "all_failed_reasons": [],
                 "scores": {
                     "blur_score": 145.2,
                     "brightness_score": 128.0,

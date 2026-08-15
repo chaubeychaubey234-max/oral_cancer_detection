@@ -87,7 +87,7 @@ def check_glare(
     """
     hsv = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV)
     
-    # Glare mask: low saturation (S <= 45) AND high value (V >= 230)
+    # Glare mask: low saturation (S <= GLARE_SATURATION_MAX) AND high value (V >= GLARE_VALUE_MIN)
     s_channel = hsv[:, :, 1]
     v_channel = hsv[:, :, 2]
     
@@ -104,12 +104,14 @@ def check_framing(
     image_bgr: np.ndarray, min_confidence: float = 0.50
 ) -> Tuple[float, bool]:
     """
-    Rule-based framing heuristic to confirm buccal/oral mucosa is plausibly in frame.
+    Discriminative rule-based framing check to verify inner buccal mucosa positioning.
 
-    Analyzes:
-    1. YCrCb mucosal chrominance coverage (pinkish/reddish mucosal color bounds).
-    2. Central Region of Interest (ROI) tissue concentration vs borders.
-    3. Structural texture / edge distribution on tissue regions.
+    Evaluates:
+    1. YCrCb mucosal chrominance (distinguishes inner mucosa from outer facial skin/background).
+    2. Central ROI concentration (verifies mucosa is centered, not just peripheral).
+    3. Facial skin penalty (detects dominance of outer face/lip skin vs. inner oral cavity).
+    4. Teeth occlusion penalty (detects dominance of dental structures vs. mucosal tissue).
+    5. Shadow/darkness gap penalty (detects out-of-focus background dark voids).
 
     Args:
         image_bgr (np.ndarray): Input BGR image matrix.
@@ -117,44 +119,85 @@ def check_framing(
 
     Returns:
         Tuple[float, bool]: (framing_confidence, is_pass)
-            - framing_confidence: Probability score that oral mucosa is centered in frame (0.0 to 1.0).
+            - framing_confidence: Calculated confidence score (0.0 to 1.0).
             - is_pass: True if framing_confidence >= min_confidence, False otherwise.
     """
     h, w = image_bgr.shape[:2]
     total_pixels = h * w
 
-    # 1. Convert to YCrCb space for mucosal chromaticity analysis
+    # 1. Color Space Conversions
     ycrcb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2YCrCb)
+    y_channel = ycrcb[:, :, 0]
     cr_channel = ycrcb[:, :, 1]
     cb_channel = ycrcb[:, :, 2]
 
-    # Binary mask for mucosal tissue color range
-    tissue_mask = (
-        (cr_channel >= MUCOSA_YCRCB_MIN[1]) & (cr_channel <= MUCOSA_YCRCB_MAX[1]) &
-        (cb_channel >= MUCOSA_YCRCB_MIN[2]) & (cb_channel <= MUCOSA_YCRCB_MAX[2])
+    # Inner Buccal Mucosa Chromaticity Mask (Deep red-pinkish hue: Cr >= 150, Cb <= 118)
+    mucosa_mask = (
+        (cr_channel >= 150) & (cr_channel <= MUCOSA_YCRCB_MAX[1]) &
+        (cb_channel >= 65) & (cb_channel <= 118) &
+        (y_channel >= 35) & (y_channel <= 245)
     )
-    overall_tissue_ratio = np.count_nonzero(tissue_mask) / total_pixels
 
-    # 2. Central Region of Interest (ROI) analysis (middle 60% of width and height)
+    # Outer Facial Skin Mask (Lower Cr < 150 or higher Cb > 118)
+    skin_mask = (
+        ((cr_channel < 150) | (cb_channel > 118)) &
+        (y_channel >= 70) & (y_channel <= 235)
+    )
+
+    # Teeth / Bright Dental Restoration Mask (High luminance, low chrominance variation)
+    teeth_mask = (
+        (y_channel >= 195) &
+        (np.abs(cr_channel.astype(np.int16) - 128) <= 16) &
+        (np.abs(cb_channel.astype(np.int16) - 128) <= 16)
+    )
+
+    # Dark Shadow / Void Mask (Low luminance Y < 35)
+    shadow_mask = (y_channel < 35)
+
+    # 2. Central Region of Interest (ROI) - Middle 60% of frame
     y1, y2 = int(h * 0.2), int(h * 0.8)
     x1, x2 = int(w * 0.2), int(w * 0.8)
-    center_roi = tissue_mask[y1:y2, x1:x2]
-    center_tissue_ratio = np.count_nonzero(center_roi) / center_roi.size if center_roi.size > 0 else 0.0
+    
+    center_mucosa = mucosa_mask[y1:y2, x1:x2]
+    center_skin = skin_mask[y1:y2, x1:x2]
+    center_teeth = teeth_mask[y1:y2, x1:x2]
+    center_shadow = shadow_mask[y1:y2, x1:x2]
 
-    # 3. Structural texture check (avoid plain flat pink backgrounds)
+    center_total = center_mucosa.size if center_mucosa.size > 0 else 1
+
+    center_mucosa_ratio = np.count_nonzero(center_mucosa) / center_total
+    overall_mucosa_ratio = np.count_nonzero(mucosa_mask) / total_pixels
+
+    center_skin_ratio = np.count_nonzero(center_skin) / center_total
+    center_teeth_ratio = np.count_nonzero(center_teeth) / center_total
+    center_shadow_ratio = np.count_nonzero(center_shadow) / center_total
+
+    # 3. Texture / Edge Density Check on Mucosal Regions
     gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
-    edges = cv2.Canny(gray, 50, 150)
-    edge_density = np.count_nonzero(edges) / total_pixels
+    edges = cv2.Canny(gray, 40, 120)
+    mucosa_edges = edges & mucosa_mask
+    mucosa_pixel_count = np.count_nonzero(mucosa_mask)
+    edge_density = (np.count_nonzero(mucosa_edges) / mucosa_pixel_count) if mucosa_pixel_count > 0 else 0.0
 
-    # Scoring heuristic:
-    # - Central tissue presence has highest weight (0.60)
-    # - Overall tissue presence weight (0.25)
-    # - Edge texture component weight (0.15)
-    center_score = min(1.0, center_tissue_ratio / 0.35)  # expects >=35% mucosal tissue in center
-    overall_score = min(1.0, overall_tissue_ratio / 0.25) # expects >=25% overall tissue
-    texture_score = min(1.0, edge_density / 0.02)         # expects realistic tissue edge structure
+    # 4. Confidence Scoring Math
+    center_score = min(1.0, center_mucosa_ratio / 0.35)     # expects >=35% center mucosa
+    overall_score = min(1.0, overall_mucosa_ratio / 0.25)    # expects >=25% overall mucosa
+    texture_score = min(1.0, edge_density / 0.03)            # expects realistic texture
 
-    raw_confidence = (0.60 * center_score) + (0.25 * overall_score) + (0.15 * texture_score)
+    # Penalties for non-mucosa edge cases
+    skin_penalty = min(0.50, center_skin_ratio * 0.85)       # penalize facial skin dominating frame
+    teeth_penalty = min(0.40, center_teeth_ratio * 0.85)     # penalize dominant teeth
+    shadow_penalty = min(0.40, center_shadow_ratio * 0.85)   # penalize dark background shadows
+
+    raw_confidence = (
+        (0.50 * center_score) +
+        (0.30 * overall_score) +
+        (0.20 * texture_score) -
+        skin_penalty -
+        teeth_penalty -
+        shadow_penalty
+    )
+
     framing_confidence = float(round(np.clip(raw_confidence, 0.0, 1.0), 2))
     is_pass = framing_confidence >= min_confidence
 

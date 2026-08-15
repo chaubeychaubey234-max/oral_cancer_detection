@@ -5,7 +5,7 @@ and formats results according to the agreed multi-team contract.
 """
 
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from .checks import check_blur, check_exposure, check_framing, check_glare
 from .config import QualityConfig
@@ -34,6 +34,7 @@ def check_image_quality(
         {
           "pass": bool,
           "reason": "blur" | "underexposed" | "overexposed" | "glare" | "bad_framing" | null,
+          "all_failed_reasons": ["blur", "bad_framing"],
           "scores": {
             "blur_score": float,
             "brightness_score": float,
@@ -72,27 +73,30 @@ def check_image_quality(
         image_bgr, min_confidence=config.min_framing_confidence
     )
 
-    # 3. Determine failure reason reflecting the FIRST failing check only in priority order
-    reason: Optional[str] = None
+    # 3. Identify ALL failing reasons across all 4 checks
+    all_failed_reasons: List[str] = []
     if not pass_blur:
-        reason = "blur"
-    elif exp_verdict == "underexposed":
-        reason = "underexposed"
+        all_failed_reasons.append("blur")
+    if exp_verdict == "underexposed":
+        all_failed_reasons.append("underexposed")
     elif exp_verdict == "overexposed":
-        reason = "overexposed"
-    elif not pass_glare:
-        reason = "glare"
-    elif not pass_framing:
-        reason = "bad_framing"
+        all_failed_reasons.append("overexposed")
+    if not pass_glare:
+        all_failed_reasons.append("glare")
+    if not pass_framing:
+        all_failed_reasons.append("bad_framing")
 
-    overall_pass: bool = reason is None
+    # 4. Primary reason is the FIRST failure in agreed priority order
+    reason: Optional[str] = all_failed_reasons[0] if len(all_failed_reasons) > 0 else None
+    overall_pass: bool = (reason is None)
 
-    # 4. Construct standardized response payload matching team contract
+    # 5. Construct standardized response payload matching team contract
     timestamp_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     return {
         "pass": overall_pass,
         "reason": reason,
+        "all_failed_reasons": all_failed_reasons,
         "scores": {
             "blur_score": float(blur_score),
             "brightness_score": float(brightness_score),

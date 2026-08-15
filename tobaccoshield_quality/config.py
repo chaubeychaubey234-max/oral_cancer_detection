@@ -15,10 +15,12 @@ DEFAULT_MAX_GLARE_AREA_PCT: float = 5.0         # Max specular highlight % of to
 DEFAULT_MIN_FRAMING_CONFIDENCE: float = 0.50     # Min oral mucosa presence confidence score (0.0 to 1.0)
 
 # Color bounds for human oral mucosa tissue in YCrCb color space
-# YCrCb separates luminance (Y) from chrominance (Cr red-difference, Cb blue-difference)
-# Oral mucosa exhibits high Cr values (reddish/pinkish hue) with specific Cb ranges
-MUCOSA_YCRCB_MIN: Tuple[int, int, int] = (0, 133, 77)
-MUCOSA_YCRCB_MAX: Tuple[int, int, int] = (255, 173, 127)
+# Inner oral mucosa (buccal, labial, gingiva) exhibits high Cr (135-190) and lower Cb (65-125)
+MUCOSA_YCRCB_MIN: Tuple[int, int, int] = (30, 135, 65)
+MUCOSA_YCRCB_MAX: Tuple[int, int, int] = (245, 190, 125)
+
+# Outer skin boundary (used to differentiate facial skin from inner oral cavity)
+SKIN_CB_MIN: int = 112
 
 # Specular glare highlight detection bounds in HSV color space
 # Flash reflections on moist mucosa produce extremely high Value (V) combined with low Saturation (S)

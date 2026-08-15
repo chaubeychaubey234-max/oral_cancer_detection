@@ -28,6 +28,7 @@ Every check returns a JSON-serializable dictionary adhering strictly to the cont
 {
   "pass": true,
   "reason": null,
+  "all_failed_reasons": [],
   "scores": {
     "blur_score": 142.5,
     "brightness_score": 128.4,
@@ -41,20 +42,42 @@ Every check returns a JSON-serializable dictionary adhering strictly to the cont
 
 ### Contract Key Rules
 1. **`pass`** (`boolean`): `true` if all 4 quality checks pass; `false` if any check fails.
-2. **`reason`** (`string | null`): Reflects the **FIRST failing check** in priority order:
+2. **`reason`** (`string | null`): Reflects the **FIRST failing check** in agreed priority order:
    - `"blur"`: Blur score < `BLUR_THRESHOLD`
    - `"underexposed"`: Brightness score < `BRIGHTNESS_MIN`
    - `"overexposed"`: Brightness score > `BRIGHTNESS_MAX`
    - `"glare"`: Glare area % > `MAX_GLARE_AREA_PCT`
    - `"bad_framing"`: Framing confidence < `MIN_FRAMING_CONFIDENCE`
    - `null`: When `pass` is `true`.
-3. **`scores`** (`object`): **ALWAYS includes all 4 numeric scores**, regardless of whether the image passed or failed.
-4. **`timestamp`** (`ISO8601 string`): UTC timestamp of processing time.
-5. **`module_version`** (`string`): Current release version (`1.0.0`).
+3. **`all_failed_reasons`** (`array of strings`): Contains **ALL failing checks** (e.g. `["blur", "bad_framing"]`). Useful for Member A when presenting detailed user feedback or logging multi-failure states.
+4. **`scores`** (`object`): **ALWAYS includes all 4 numeric scores**, regardless of whether the image passed or failed.
+5. **`timestamp`** (`ISO8601 string`): UTC timestamp of processing time.
+6. **`module_version`** (`string`): Current release version (`1.0.0`).
 
 ---
 
-## 3. Member A (React Native Mobile App Integration)
+## 3. Failure Reason Priority & UI Guidance for Member A
+
+### Priority Order Evaluation
+When multiple checks fail on a single photo (for example, an image that is both out of focus AND misframed), `check_image_quality()` evaluates checks in this exact sequence:
+1. `blur`
+2. `underexposed` / `overexposed`
+3. `glare`
+4. `bad_framing`
+
+The primary `"reason"` string returns the **first** failing check in this list.
+
+### Recommendation for Member A (React Native Mobile UI)
+> [!IMPORTANT]
+> **Multi-Failure Retake Prompting**: If `result.all_failed_reasons` has more than 1 item (e.g. `["blur", "bad_framing"]`), do NOT assume `result.reason` is the only problem.  
+> 
+> Member A can handle retake prompts in one of two ways:
+> - **Option A (Comprehensive retake message)**: Check `result.all_failed_reasons` to display a combined message (e.g., *"Photo is blurry and misframed. Hold steady and center the inner cheek in frame."*)
+> - **Option B (Generic fallback)**: If `all_failed_reasons.length > 1`, display a clear generic prompt: *"Photo quality insufficient. Please re-align camera and tap to focus."*
+
+---
+
+## 4. Member A (React Native Mobile App Integration)
 
 Member A calls the quality check endpoint immediately after a camera frame is captured.
 
@@ -76,46 +99,20 @@ curl -X POST "http://localhost:8000/check-image-quality" \
   -F "file=@sample_images/01_good_mucosa.jpg"
 ```
 
-### React Native Integration Code Snippet
-```javascript
-import React from 'react';
-import { RNCamera } from 'react-native-camera';
-
-const takePhotoAndCheckQuality = async (camera) => {
-  const options = { quality: 0.8, base64: true };
-  const data = await camera.takePictureAsync(options);
-
-  const response = await fetch('https://api.tobaccoshield.org/check-image-quality', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image_base64: data.base64 }),
-  });
-
-  const result = await response.json();
-
-  if (!result.pass) {
-    // Prompt retake with specific user message based on reason
-    const userMessages = {
-      blur: "Photo is blurry. Please hold the phone steady and tap to focus.",
-      underexposed: "Lighting is too dark. Turn on camera flash or move to a bright area.",
-      overexposed: "Photo is too bright/washed out. Avoid direct harsh light.",
-      glare: "Flash reflection detected on mucosa. Adjust camera angle slightly.",
-      bad_framing: "Oral mucosa not detected. Ensure the cheek/lip is centered in frame.",
-    };
-    showRetakeModal(userMessages[result.reason]);
-    return;
-  }
-
-  // Quality check passed! Proceed to AI risk assessment
-  proceedToRiskAssessment(data.uri, result.scores);
-};
-```
-
 ---
 
-## 4. Member C (AI Risk Model Pipeline Integration)
+## 5. Member C (AI Risk Model Pipeline Integration) & Threshold Calibration
 
 Member C directly imports `check_image_quality()` to filter incoming training/inference images and log quality scores alongside model predictions.
+
+### Real Camera Threshold Calibration Notice
+> [!WARNING]
+> **Calibrating Against Real Physical Camera Photos**:  
+> Initial default thresholds (`BLUR_THRESHOLD = 100.0`, brightness `40–215`, glare `5%`) were established using synthetic noise models. Real smartphone cameras (iOS/Android) introduce physical optical factors:
+> - **Lens Autofocus & Motion Blur**: Real 12MP/48MP phone sensors compressed to JPEG may yield higher Laplacian variance (e.g., 200–500 for sharp images, <80 for blurry ones).
+> - **Camera Flash Color Temperature**: Direct LED flash on moist mucosa creates localized specular highlights.
+> 
+> **Action before Member C model training**: Collect 15–20 real clinical/stock buccal mucosa photos, run `python3 test_quality_checker.py <real_photos_dir>`, and adjust thresholds in `QualityConfig` as needed.
 
 ### Direct In-Process Python Call
 ```python
@@ -126,7 +123,7 @@ def process_patient_screening(image_bytes: bytes):
     quality = check_image_quality(image_bytes)
     
     if not quality["pass"]:
-        print(f"Skipping risk model due to quality issue: {quality['reason']}")
+        print(f"Skipping risk model due to quality issues: {quality['all_failed_reasons']}")
         return {
             "status": "REJECTED_QUALITY",
             "quality_audit": quality
@@ -144,17 +141,9 @@ def process_patient_screening(image_bytes: bytes):
     }
 ```
 
-### Portability & On-Device C++ / TFLite Note
-The core checks in `tobaccoshield_quality/checks.py` rely strictly on primitive matrix operations:
-- `cv2.Laplacian` (Spatial convolution kernel: `[[0, 1, 0], [1, -4, 1], [0, 1, 0]]`)
-- Grayscale / YCrCb / HSV color transformations
-- Pixel intensity counts (`countNonZero`)
-
-No complex Python-only dependencies are used, allowing direct C++ / Android NDK / TFLite C API porting for full offline on-device execution.
-
 ---
 
-## 5. Member D (Backend & Doctor Dashboard Integration)
+## 6. Member D (Backend & Doctor Dashboard Integration)
 
 Member D embeds the FastAPI application or calls `check_image_quality` in the server backend, storing audit scores in PostgreSQL for doctor review.
 
@@ -166,6 +155,7 @@ CREATE TABLE image_quality_audits (
     image_id VARCHAR(64) UNIQUE NOT NULL,
     passed BOOLEAN NOT NULL,
     failure_reason VARCHAR(32),
+    all_failed_reasons TEXT[],  -- Array of all failing check reasons
     blur_score FLOAT NOT NULL,
     brightness_score FLOAT NOT NULL,
     glare_area_pct FLOAT NOT NULL,
@@ -175,38 +165,23 @@ CREATE TABLE image_quality_audits (
 );
 ```
 
-### Storing Quality Results in FastAPI Backend
-```python
-from fastapi import APIRouter
-from tobaccoshield_quality import check_image_quality
+---
 
-router = APIRouter()
+## 7. Framing Check Edge-Case Discrimination Reference
 
-@router.post("/patient/{patient_id}/upload-photo")
-async def handle_photo_upload(patient_id: str, image_bytes: bytes, db: Session):
-    # Execute quality check
-    quality_res = check_image_quality(image_bytes)
+The framing check (`check_framing`) evaluates inner buccal mucosa presence while actively discriminating against edge cases:
 
-    # Log structured quality audit record in PostgreSQL
-    db_audit = QualityAudit(
-        patient_id=patient_id,
-        passed=quality_res["pass"],
-        failure_reason=quality_res["reason"],
-        blur_score=quality_res["scores"]["blur_score"],
-        brightness_score=quality_res["scores"]["brightness_score"],
-        glare_area_pct=quality_res["scores"]["glare_area_pct"],
-        framing_confidence=quality_res["scores"]["framing_confidence"],
-        module_version=quality_res["module_version"]
-    )
-    db.add(db_audit)
-    db.commit()
-
-    return quality_res
-```
+| Scenario | Expected Framing Confidence | Behavior & Penalties |
+| :--- | :--- | :--- |
+| **Centered Inner Mucosa** | `0.70 – 0.99` | High YCrCb chrominance match in central ROI. Passes check. |
+| **Outer Lips Only** | `0.15 – 0.40` | Outer vermilion border & facial skin detected; lacks inner mucosa red-chrominance in central 60% ROI. Marked `bad_framing`. |
+| **Teeth Dominant Frame** | `0.05 – 0.35` | High white luminance & low chrominance variation in center triggers teeth penalty. Marked `bad_framing`. |
+| **Deep Oral Shadow Void** | `0.00 – 0.30` | Central luminance $Y < 35$ triggers dark void penalty. Marked `bad_framing`. |
+| **Distant Shot (Far away)**| `0.10 – 0.45` | Mucosal tissue occupies $<20\%$ of frame. Marked `bad_framing`. |
 
 ---
 
-## 6. Threshold Configuration Reference
+## 8. Threshold Configuration Reference
 
 All thresholds are defined as named constants in `tobaccoshield_quality/config.py`.
 
