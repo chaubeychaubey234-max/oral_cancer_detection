@@ -104,6 +104,15 @@ async function openCase(caseId) {
 
   $("caseImage").src = c.image_url ? API_BASE + c.image_url : "";
 
+  if (c.processed_image_url) {
+    $("caseProcessedImage").src = API_BASE + c.processed_image_url;
+    $("caseProcessedImage").classList.remove("hidden");
+    $("processedLabel").classList.remove("hidden");
+  } else {
+    $("caseProcessedImage").classList.add("hidden");
+    $("processedLabel").classList.add("hidden");
+  }
+
   if (c.risk_assessment && c.risk_assessment.heatmap_url) {
     $("caseHeatmap").src = API_BASE + c.risk_assessment.heatmap_url;
     $("caseHeatmap").classList.remove("hidden");

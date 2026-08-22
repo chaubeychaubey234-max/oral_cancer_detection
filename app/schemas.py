@@ -120,6 +120,7 @@ class CaseOut(BaseModel):
     patient_id: str
     status: str
     image_url: Optional[str] = None
+    processed_image_url: Optional[str] = None
     captured_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime

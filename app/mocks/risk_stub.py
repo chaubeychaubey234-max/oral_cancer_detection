@@ -1,13 +1,11 @@
 """
 STUB for Member C's risk-classification model.
 
-Member D defines this as the expected contract (no such contract existed
-in the shared docs yet, so this doubles as a proposal you can hand to
-Member C - they can literally copy this docstring into their own module).
+The contract is now FROZEN in INTERFACE_CONTRACT.md section 3 - this
+docstring mirrors it but that file is the source of truth if they ever
+drift.
 
-Expected real contract:
-
-    classify_risk(image_input, config=None) -> {
+    classify_risk(image_bytes, config=None) -> {
         "risk_category": "low" | "medium" | "high" | "cannot_assess",
         "confidence": float,              # 0.0-1.0
         "cannot_assess": bool,
@@ -17,6 +15,11 @@ Expected real contract:
         "model_version": str,
         "timestamp": ISO8601 string,
     }
+
+Important: per the frozen pipeline order, the `image_bytes` this receives
+is always Member B's `processed_image_bytes` (224x224, cropped/normalized),
+never the raw capture - see app/routers/cases.py::_run_pipeline. Member C
+should train/tune against images that look like that, not raw uploads.
 
 This stub never produces a real diagnosis - it deterministically hashes
 image bytes into a pseudo-random-but-repeatable risk category so that

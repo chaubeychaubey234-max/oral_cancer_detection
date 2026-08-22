@@ -13,6 +13,7 @@ from app.config import settings
 from app.database import get_db
 from app.integrations.quality_client import run_quality_check
 from app.integrations.risk_client import run_risk_classification
+from app.utils import validate_image_bytes
 
 router = APIRouter(prefix="/cases", tags=["cases"])
 
@@ -27,9 +28,13 @@ def _save_bytes(subdir: str, data: bytes, ext: str = "jpg") -> str:
 def _run_pipeline(db: Session, case: models.Case, image_bytes: bytes) -> models.Case:
     """
     Shared orchestration used by both the direct-upload endpoint and the
-    offline sync endpoint: quality-check first (Member B), and only if it
-    passes, run risk classification (Member C). This mirrors the priority
-    rule in INTEGRATION_GUIDE.md - quality gatekeeps everything downstream.
+    offline sync endpoint. Per INTERFACE_CONTRACT.md, Member B owns the full
+    click-to-AI-ready-image flow (position -> framing -> blur -> lighting ->
+    glare -> quality decision -> preprocessing), so:
+      1. quality-check the raw capture (Member B)
+      2. if it fails, stop - the risk model must never see a quality-failed image
+      3. if it passes, run risk classification (Member C) on the PROCESSED
+         image B produced, not the raw upload
     """
     qc = run_quality_check(image_bytes)
 
@@ -53,11 +58,13 @@ def _run_pipeline(db: Session, case: models.Case, image_bytes: bytes) -> models.
         db.refresh(case)
         return case
 
+    processed_bytes = qc["processed_image_bytes"]  # quality_client.py guarantees this is never None on pass
+    case.processed_image_path = _save_bytes("images", processed_bytes, ext="jpg")
     case.status = models.CaseStatus.QUALITY_PASSED
     db.add(case)
     db.commit()
 
-    risk = run_risk_classification(image_bytes)
+    risk = run_risk_classification(processed_bytes)
     heatmap_path = None
     if risk.get("heatmap_png_bytes"):
         heatmap_path = _save_bytes("heatmaps", risk["heatmap_png_bytes"], ext="png")
@@ -82,6 +89,7 @@ def _run_pipeline(db: Session, case: models.Case, image_bytes: bytes) -> models.
 
 def _to_case_out(case: models.Case) -> schemas.CaseOut:
     image_url = f"/cases/{case.id}/image" if case.image_path else None
+    processed_image_url = f"/cases/{case.id}/processed-image" if case.processed_image_path else None
     qa_out = None
     if case.quality_audit:
         qa = case.quality_audit
@@ -120,7 +128,7 @@ def _to_case_out(case: models.Case) -> schemas.CaseOut:
     return schemas.CaseOut(
         id=case.id, client_uuid=case.client_uuid, patient_id=case.patient_id,
         status=case.status.value if hasattr(case.status, "value") else case.status,
-        image_url=image_url, captured_at=case.captured_at,
+        image_url=image_url, processed_image_url=processed_image_url, captured_at=case.captured_at,
         created_at=case.created_at, updated_at=case.updated_at,
         quality_audit=qa_out, risk_assessment=ra_out, reviews=reviews_out,
     )
@@ -143,6 +151,7 @@ async def create_case(
         raise HTTPException(404, "patient not found")
 
     image_bytes = await file.read()
+    validate_image_bytes(image_bytes)
     image_path = _save_bytes("images", image_bytes, ext="jpg")
 
     case = models.Case(
@@ -169,6 +178,17 @@ def get_case_image(case_id: str, db: Session = Depends(get_db),
     if not case or not case.image_path or not Path(case.image_path).exists():
         raise HTTPException(404, "image not found")
     return FileResponse(case.image_path)
+
+
+@router.get("/{case_id}/processed-image")
+def get_case_processed_image(case_id: str, db: Session = Depends(get_db),
+                              current_user: models.User = Depends(get_current_user)):
+    """The AI-ready image Member B produced and Member C actually ran inference on -
+    useful on the dashboard to explain exactly what the model saw vs. the raw capture."""
+    case = db.query(models.Case).filter(models.Case.id == case_id).first()
+    if not case or not case.processed_image_path or not Path(case.processed_image_path).exists():
+        raise HTTPException(404, "processed image not available for this case")
+    return FileResponse(case.processed_image_path)
 
 
 @router.get("/{case_id}/heatmap")

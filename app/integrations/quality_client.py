@@ -38,8 +38,24 @@ def is_using_real_module() -> bool:
 
 
 def run_quality_check(image_bytes: bytes, config: dict | None = None) -> dict:
-    """Returns the standardized contract dict from INTEGRATION_GUIDE.md section 2."""
+    """Returns the standardized contract dict from INTERFACE_CONTRACT.md.
+
+    Always guarantees a "processed_image_bytes" key is present (falling back
+    to the raw capture if a connected quality module - real or stub - didn't
+    supply one), so callers never need defensive .get() chains.
+    """
     if _using_real:
         qconfig = QualityConfig(**config) if config else None
-        return _real_module(image_bytes, config=qconfig)
-    return _stub_check(image_bytes, config=config)
+        result = _real_module(image_bytes, config=qconfig)
+    else:
+        result = _stub_check(image_bytes, config=config)
+
+    result.setdefault("processed_image_bytes", None)
+    if result["pass"] and result["processed_image_bytes"] is None:
+        logger.warning(
+            "Quality module passed an image but returned no processed_image_bytes; "
+            "falling back to the raw capture for the risk model. Confirm Member B's "
+            "real package implements preprocessing per INTERFACE_CONTRACT.md."
+        )
+        result["processed_image_bytes"] = image_bytes
+    return result

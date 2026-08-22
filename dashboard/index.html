@@ -61,7 +61,10 @@
     <h2>Case Detail</h2>
     <div class="case-grid">
       <div class="case-image-col">
+        <p class="hint">Raw capture</p>
         <img id="caseImage" alt="capture" />
+        <p class="hint" id="processedLabel" class="hidden">AI-ready image (what the risk model actually saw)</p>
+        <img id="caseProcessedImage" alt="AI-ready preprocessed image" class="hidden" />
         <img id="caseHeatmap" alt="heatmap overlay" class="hidden" />
       </div>
       <div class="case-info-col">

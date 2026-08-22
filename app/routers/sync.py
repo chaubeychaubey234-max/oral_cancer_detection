@@ -23,13 +23,14 @@ Conflict policy (kept simple on purpose for Phase 1):
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.auth import get_current_user
 from app.database import get_db
 from app.routers.cases import _run_pipeline, _save_bytes
-from app.utils import decode_image_base64
+from app.utils import decode_image_base64, as_naive_utc, validate_image_bytes
 
 router = APIRouter(prefix="/sync", tags=["sync"])
 
@@ -55,10 +56,9 @@ def _upsert_patient(db: Session, item: schemas.SyncPatientItem, health_worker_id
         return schemas.SyncResultItem(client_uuid=item.client_uuid or patient.id, server_id=patient.id, status="created")
 
     # last-write-wins by client clock; patients have no "server has progressed" lock, unlike cases
-    # SQLite returns naive datetimes; strip tzinfo from the incoming (always-UTC) value so the
-    # comparison doesn't raise "can't compare offset-naive and offset-aware datetimes".
-    incoming_ts = item.client_updated_at.replace(tzinfo=None) if item.client_updated_at else None
-    if incoming_ts and (not existing.client_updated_at or incoming_ts >= existing.client_updated_at):
+    incoming_ts = as_naive_utc(item.client_updated_at)
+    existing_ts = as_naive_utc(existing.client_updated_at)
+    if incoming_ts and (not existing_ts or incoming_ts >= existing_ts):
         existing.name = item.name
         existing.age = item.age
         existing.sex = item.sex
@@ -97,6 +97,10 @@ def _upsert_case(db: Session, item: schemas.SyncCaseItem, health_worker_id: str)
 
     try:
         image_bytes = decode_image_base64(item.image_base64)
+        validate_image_bytes(image_bytes)
+    except HTTPException as e:
+        return schemas.SyncResultItem(client_uuid=item.client_uuid, server_id="", status="error",
+                                       detail=str(e.detail))
     except Exception as e:
         return schemas.SyncResultItem(client_uuid=item.client_uuid, server_id="", status="error",
                                        detail=f"could not decode image_base64: {e}")
@@ -138,7 +142,17 @@ def _upsert_case(db: Session, item: schemas.SyncCaseItem, health_worker_id: str)
             db.add(case)
             db.commit()
             from app.integrations.risk_client import run_risk_classification
-            risk = run_risk_classification(image_bytes)
+            # Per INTERFACE_CONTRACT.md, C should run on B's AI-ready image, not the
+            # raw capture. If the on-device quality model included one (base64,
+            # matching the same field the server-side stub/real module produces),
+            # use it; otherwise fall back to the raw capture and log why.
+            processed_bytes = image_bytes
+            if qc.get("processed_image_base64"):
+                processed_bytes = decode_image_base64(qc["processed_image_base64"])
+                case.processed_image_path = _save_bytes("images", processed_bytes, ext="jpg")
+                db.add(case)
+                db.commit()
+            risk = run_risk_classification(processed_bytes)
             heatmap_path = _save_bytes("heatmaps", risk["heatmap_png_bytes"], ext="png") if risk.get("heatmap_png_bytes") else None
             db.add(models.RiskAssessment(
                 case_id=case.id, risk_category=risk.get("risk_category"), confidence=risk.get("confidence"),

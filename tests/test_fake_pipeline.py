@@ -52,6 +52,14 @@ def test_good_image_passes_quality_and_gets_risk_assessed(client, health_worker_
     assert case["risk_assessment"] is not None
     assert case["risk_assessment"]["risk_category"] in ("low", "medium", "high", "cannot_assess")
 
+    # NEW: quality-passed images must produce an AI-ready processed image,
+    # and it must be a DIFFERENT artifact from the raw capture (per
+    # INTERFACE_CONTRACT.md section 2 - Member B owns preprocessing now).
+    assert case["processed_image_url"] is not None
+    processed_res = client.get(case["processed_image_url"], headers=auth_headers(health_worker_token))
+    assert processed_res.status_code == 200
+    assert processed_res.headers["content-type"].startswith("image/")
+
     # image + (maybe) heatmap should be fetchable
     img_res = client.get(case["image_url"], headers=auth_headers(health_worker_token))
     assert img_res.status_code == 200
@@ -66,6 +74,7 @@ def test_blurry_image_fails_quality_and_skips_risk_model(client, health_worker_t
     assert case["quality_audit"]["passed"] is False
     assert case["quality_audit"]["reason"] == "blur"
     assert case["risk_assessment"] is None  # risk model must NOT run on quality-failed images
+    assert case["processed_image_url"] is None  # no AI-ready image should exist for a rejected capture
 
 
 def test_dark_image_fails_as_underexposed(client, health_worker_token):
@@ -213,3 +222,47 @@ def test_sync_with_precomputed_device_quality_result_skips_server_recompute(clie
     assert case["status"] == "quality_failed"
     assert case["quality_audit"]["module_version"] == "on-device-tflite-0.9"
     assert case["risk_assessment"] is None
+
+
+# ---------------------------------------------------------------------------
+# Error handling (app/error_handling.py) - every error response, from any
+# cause, must share one JSON envelope: {"error": {"code", "message", ...}}
+# ---------------------------------------------------------------------------
+def test_corrupt_upload_returns_clean_400_not_500(client, health_worker_token):
+    patient_id = create_patient(client, health_worker_token)
+    files = {"file": ("not_an_image.jpg", b"this is definitely not JPEG bytes", "image/jpeg")}
+    res = client.post("/cases", data={"patient_id": patient_id}, files=files,
+                       headers=auth_headers(health_worker_token))
+    assert res.status_code == 400
+    body = res.json()
+    assert body["error"]["code"] == "bad_request"
+    assert "image" in body["error"]["message"].lower()
+
+
+def test_not_found_uses_standard_error_envelope(client, health_worker_token):
+    res = client.get("/cases/does-not-exist", headers=auth_headers(health_worker_token))
+    assert res.status_code == 404
+    assert res.json()["error"]["code"] == "not_found"
+
+
+def test_validation_error_uses_standard_error_envelope(client, health_worker_token):
+    # missing required "name" field
+    res = client.post("/patients", json={"age": 40}, headers=auth_headers(health_worker_token))
+    assert res.status_code == 422
+    body = res.json()
+    assert body["error"]["code"] == "validation_error"
+    assert isinstance(body["error"]["detail"], list)
+
+
+def test_sync_rejects_corrupt_image_as_per_item_error_not_batch_failure(client, health_worker_token):
+    payload = {
+        "patients": [{"client_uuid": "device-patient-003", "name": "Third Offline Patient"}],
+        "cases": [{
+            "client_uuid": "device-case-003",
+            "patient_client_uuid": "device-patient-003",
+            "image_base64": base64.b64encode(b"not a real image").decode(),
+        }],
+    }
+    res = client.post("/sync", json=payload, headers=auth_headers(health_worker_token))
+    assert res.status_code == 200  # the BATCH still succeeds
+    assert res.json()["cases"][0]["status"] == "error"  # the individual item is reported as failed

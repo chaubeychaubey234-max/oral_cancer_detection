@@ -2,24 +2,35 @@
 STUB for Member B's `tobaccoshield_quality.check_image_quality`.
 
 This exists purely so Member D can build and test the full pipeline
-(upload -> quality check -> risk model -> case status -> dashboard)
-*before* Member B's real package lands in the repo.
+(upload -> quality check -> preprocessing -> risk model -> case status ->
+dashboard) *before* Member B's real package lands in the repo.
 
-It follows the exact JSON contract documented in INTEGRATION_GUIDE.md
-section 2, so swapping this stub for the real package later is a
-one-line change in app/integrations/quality_client.py - nothing else
-in the codebase needs to know the difference.
+It follows the FROZEN contract in INTERFACE_CONTRACT.md (see that file for
+the canonical spec), so swapping this stub for the real package later is a
+one-line change in app/integrations/quality_client.py - nothing else in the
+codebase needs to know the difference.
 
-The heuristic itself is intentionally crude (mean brightness + a cheap
-Laplacian-variance blur proxy via PIL) - it is NOT meant to be accurate,
-only to return plausible pass/fail signals so downstream code paths
-(retake prompts, status transitions, dashboard badges) can be exercised.
+Per the current team scope, Member B owns the WHOLE flow from click to
+AI-ready image:
+    CLICK -> position -> framing -> blur -> lighting -> glare
+          -> quality decision -> preprocessing -> AI-ready image
+So on a pass, this stub also returns "processed_image_bytes" - a cropped,
+resized, normalized image that Member C's model should run on, NOT the raw
+capture. Member D's pipeline (app/routers/cases.py::_run_pipeline) always
+sends whatever's in processed_image_bytes to the risk classifier, falling
+back to the raw upload only if a quality module (real or stub) doesn't
+supply one.
+
+The heuristics themselves are intentionally crude (mean brightness + a
+cheap Laplacian-variance blur proxy via PIL) - not meant to be accurate,
+only to exercise every downstream code path (retake prompts, status
+transitions, dashboard badges, preprocessing hand-off) realistically.
 """
 from datetime import datetime, timezone
 import io
 
 import numpy as np
-from PIL import Image, ImageFilter
+from PIL import Image, ImageOps
 
 MODULE_VERSION = "0.0.1-stub"
 
@@ -28,6 +39,10 @@ BRIGHTNESS_MIN = 40.0
 BRIGHTNESS_MAX = 215.0
 MAX_GLARE_AREA_PCT = 6.0
 MIN_FRAMING_CONFIDENCE = 0.50
+
+# Target size Member C's model is assumed to expect. Change this the moment
+# Member C confirms their real input size and note it in INTERFACE_CONTRACT.md.
+AI_READY_SIZE = (224, 224)
 
 
 def _load_gray(image_bytes: bytes) -> np.ndarray:
@@ -61,6 +76,26 @@ def _glare_pct(image_bytes: bytes) -> float:
     img = Image.open(io.BytesIO(image_bytes)).convert("L")
     arr = np.asarray(img, dtype=np.float32)
     return float((arr > 245).mean() * 100.0)
+
+
+def _make_ai_ready_image(image_bytes: bytes) -> bytes:
+    """
+    Crop to the central mucosa ROI, resize to AI_READY_SIZE, and normalize
+    contrast - a stand-in for whatever real preprocessing Member B settles
+    on (their real package can crop tighter around a detected mucosa region,
+    apply color-constancy correction, etc). The exact algorithm doesn't
+    matter for Member D's purposes - only that *some* processed image comes
+    back and gets threaded through to Member C instead of the raw capture.
+    """
+    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    w, h = img.size
+    box = (int(w * 0.15), int(h * 0.15), int(w * 0.85), int(h * 0.85))
+    cropped = img.crop(box)
+    resized = cropped.resize(AI_READY_SIZE, Image.LANCZOS)
+    normalized = ImageOps.autocontrast(resized, cutoff=1)
+    buf = io.BytesIO()
+    normalized.save(buf, format="JPEG", quality=90)
+    return buf.getvalue()
 
 
 def check_image_quality(image_input, config=None) -> dict:
@@ -103,8 +138,10 @@ def check_image_quality(image_input, config=None) -> dict:
     if framing < framing_min:
         failed.append("bad_framing")
 
+    passed = len(failed) == 0
+
     return {
-        "pass": len(failed) == 0,
+        "pass": passed,
         "reason": failed[0] if failed else None,
         "all_failed_reasons": failed,
         "scores": {
@@ -113,6 +150,7 @@ def check_image_quality(image_input, config=None) -> dict:
             "glare_area_pct": round(glare, 2),
             "framing_confidence": round(framing, 2),
         },
+        "processed_image_bytes": _make_ai_ready_image(image_bytes) if passed else None,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "module_version": MODULE_VERSION,
     }

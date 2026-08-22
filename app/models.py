@@ -121,7 +121,8 @@ class Case(Base):
     patient_id = Column(String, ForeignKey("patients.id"), nullable=False)
     health_worker_id = Column(String, ForeignKey("users.id"), nullable=True)
 
-    image_path = Column(String, nullable=True)
+    image_path = Column(String, nullable=True)               # raw capture, as uploaded
+    processed_image_path = Column(String, nullable=True)     # Member B's AI-ready output (what C actually saw)
     captured_at = Column(DateTime, nullable=True)
     device_info = Column(String, nullable=True)
 

@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -5,9 +6,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.database import Base, engine
+from app.error_handling import install_error_handlers
 from app.routers import auth, patients, cases, sync
 from app.integrations.quality_client import is_using_real_module as quality_is_real
 from app.integrations.risk_client import is_using_real_module as risk_is_real
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 Base.metadata.create_all(bind=engine)
 
@@ -16,6 +23,8 @@ app = FastAPI(
     description="Patient records, case queue, auth, sync, and doctor dashboard API for TobaccoShield Phase 1.",
     version="1.0.0",
 )
+
+install_error_handlers(app)
 
 app.add_middleware(
     CORSMiddleware,
