@@ -13,10 +13,32 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { updatePatientRecord } from '../storage/patientStorage';
 
+type QualityScores = {
+  blur_score: number;
+  brightness_score: number;
+  glare_area_pct: number;
+  framing_confidence: number;
+};
+
+type QualityApiResponse = {
+  pass: boolean;
+  reason?: string | null;
+  all_failed_reasons: string[];
+  scores: QualityScores;
+  timestamp: string;
+  module_version: string;
+};
+
 type QualityResult = {
   passed: boolean;
   reason: string;
+  failedReasons: string[];
+  scores?: QualityScores;
 };
+
+// Member B backend running on your laptop
+const QUALITY_API_URL =
+  'http://10.64.235.234:8000/check-image-quality';
 
 export default function QualityCheckScreen() {
   const router = useRouter();
@@ -32,11 +54,6 @@ export default function QualityCheckScreen() {
     imageUri?: string;
   }>();
 
-  /*
-   * Expo Router parameters can technically be returned as
-   * string | string[]. We explicitly convert them to strings
-   * so TypeScript knows these values are safe to use.
-   */
   const imageUri =
     typeof params.imageUri === 'string'
       ? params.imageUri
@@ -52,31 +69,62 @@ export default function QualityCheckScreen() {
       ? params.patientName
       : 'Patient';
 
-  /*
-   * MEMBER B INTEGRATION POINT
-   *
-   * Replace this temporary function later with Member B's
-   * actual image-quality model/service.
-   *
-   * Expected output:
-   * {
-   *   passed: true/false,
-   *   reason: "..."
-   * }
-   */
   const runQualityCheck = async (): Promise<QualityResult> => {
-    // Temporary Phase-1 placeholder.
-    // This allows the complete Member-A flow to work
-    // before Member B's actual quality model is connected.
+    if (!imageUri) {
+      throw new Error('No image URI was provided.');
+    }
 
-    await new Promise((resolve) =>
-      setTimeout(resolve, 1000)
+    const formData = new FormData();
+
+    formData.append(
+      'file',
+      {
+        uri: imageUri,
+        name: 'oral-examination.jpg',
+        type: 'image/jpeg',
+      } as any
     );
 
+    const response = await fetch(QUALITY_API_URL, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Quality service returned HTTP ${response.status}`
+      );
+    }
+
+    const data =
+      (await response.json()) as QualityApiResponse;
+
+    const failedReasons =
+      Array.isArray(data.all_failed_reasons)
+        ? data.all_failed_reasons
+        : [];
+
+    let reason = '';
+
+    if (data.pass) {
+      reason =
+        'Image quality is acceptable for the next stage.';
+    } else if (data.reason) {
+      reason = formatReason(data.reason);
+    } else if (failedReasons.length > 0) {
+      reason = failedReasons
+        .map(formatReason)
+        .join(', ');
+    } else {
+      reason =
+        'The image did not meet the required quality checks.';
+    }
+
     return {
-      passed: true,
-      reason:
-        'Image quality is acceptable for the next stage.',
+      passed: data.pass,
+      reason,
+      failedReasons,
+      scores: data.scores,
     };
   };
 
@@ -99,7 +147,7 @@ export default function QualityCheckScreen() {
 
       if (patientId) {
         await updatePatientRecord(patientId, {
-          imageUri: imageUri,
+          imageUri,
           qualityStatus: qualityResult.passed
             ? 'passed'
             : 'failed',
@@ -110,8 +158,8 @@ export default function QualityCheckScreen() {
       console.error('Quality check error:', error);
 
       Alert.alert(
-        'Quality check failed',
-        'The image could not be checked. Please try again.'
+        'Quality check unavailable',
+        'The quality-check service could not be reached. Make sure the backend is running on port 8000 and that your phone and laptop are connected to the same Wi-Fi network.'
       );
     } finally {
       setChecking(false);
@@ -127,17 +175,9 @@ export default function QualityCheckScreen() {
       return;
     }
 
-    /*
-     * NEXT INTEGRATION POINT
-     *
-     * Member C risk classification
-     *        ↓
-     * risk category + confidence
-     */
-
     Alert.alert(
       'Quality check passed',
-      'The image has passed the basic quality check. It is ready for the next stage.',
+      'The image has passed the basic quality check and is ready for the next stage.',
       [
         {
           text: 'Done',
@@ -314,6 +354,29 @@ export default function QualityCheckScreen() {
               <Text style={styles.resultReason}>
                 {result.reason}
               </Text>
+
+              {result.scores && (
+                <View style={styles.scoresContainer}>
+                  <Text style={styles.scoreText}>
+                    Blur: {result.scores.blur_score.toFixed(1)}
+                  </Text>
+
+                  <Text style={styles.scoreText}>
+                    Brightness:{' '}
+                    {result.scores.brightness_score.toFixed(1)}
+                  </Text>
+
+                  <Text style={styles.scoreText}>
+                    Glare:{' '}
+                    {result.scores.glare_area_pct.toFixed(1)}%
+                  </Text>
+
+                  <Text style={styles.scoreText}>
+                    Framing:{' '}
+                    {result.scores.framing_confidence.toFixed(2)}
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
         )}
@@ -361,6 +424,28 @@ export default function QualityCheckScreen() {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function formatReason(reason: string): string {
+  switch (reason) {
+    case 'blur':
+      return 'Image is too blurry. Please hold the camera steady.';
+
+    case 'underexposed':
+      return 'Image is too dark. Please improve the lighting.';
+
+    case 'overexposed':
+      return 'Image is too bright. Please reduce strong lighting.';
+
+    case 'glare':
+      return 'Strong glare is affecting the image. Please adjust the lighting or camera angle.';
+
+    case 'bad_framing':
+      return 'The buccal cavity is not properly framed. Please reposition the camera.';
+
+    default:
+      return reason;
+  }
 }
 
 function QualityRow({
@@ -711,6 +796,16 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 17,
     marginTop: 3,
+  },
+
+  scoresContainer: {
+    marginTop: 8,
+  },
+
+  scoreText: {
+    color: '#718187',
+    fontSize: 10,
+    lineHeight: 16,
   },
 
   actionArea: {
