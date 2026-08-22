@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.database import Base, engine
 from app.error_handling import install_error_handlers
-from app.routers import auth, patients, cases, sync
+from app.routers import auth, patients, cases, sync, predict
 from app.integrations.quality_client import is_using_real_module as quality_is_real
 from app.integrations.risk_client import is_using_real_module as risk_is_real
 
@@ -38,6 +38,7 @@ app.include_router(auth.router)
 app.include_router(patients.router)
 app.include_router(cases.router)
 app.include_router(sync.router)
+app.include_router(predict.router)
 
 DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard"
 if DASHBOARD_DIR.exists():
