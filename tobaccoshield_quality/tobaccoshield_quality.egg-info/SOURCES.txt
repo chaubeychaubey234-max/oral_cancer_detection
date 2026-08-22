@@ -1,0 +1,6 @@
+pyproject.toml
+tobaccoshield_quality.egg-info/PKG-INFO
+tobaccoshield_quality.egg-info/SOURCES.txt
+tobaccoshield_quality.egg-info/dependency_links.txt
+tobaccoshield_quality.egg-info/requires.txt
+tobaccoshield_quality.egg-info/top_level.txt

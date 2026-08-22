@@ -1,0 +1,7 @@
+Metadata-Version: 2.4
+Name: tobaccoshield-quality
+Version: 1.0.0
+Summary: TobaccoShield Image Quality & Preprocessing Module (Member B)
+Requires-Python: >=3.9
+Requires-Dist: opencv-python>=4.8
+Requires-Dist: numpy>=1.26

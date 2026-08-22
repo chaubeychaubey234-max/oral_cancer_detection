@@ -1,6 +1,6 @@
 """
-Standalone Test Runner for TobaccoShield Image Quality Module.
-Runs check_image_quality() on a directory of sample images and prints a pretty tabular summary.
+Standalone Test Runner for TobaccoShield Image Quality Module — Member B.
+Runs check_image_quality() / run_quality_pipeline() on sample images and prints a pretty tabular summary.
 """
 
 import sys
@@ -25,7 +25,7 @@ def run_tests_on_directory(sample_dir: str = "sample_images"):
         sys.exit(1)
 
     print(f"\n==========================================================================================")
-    print(f" TOBACCOSHIELD IMAGE QUALITY TEST SUITE & THRESHOLD CALIBRATION BENCHMARK")
+    print(f" TOBACCOSHIELD IMAGE QUALITY TEST SUITE & THRESHOLD CALIBRATION BENCHMARK (MEMBER B)")
     print(f" Target Directory: {folder_path.resolve()}")
     print(f" Total Images Evaluated: {len(image_files)}")
     print(f"==========================================================================================\n")
@@ -38,10 +38,12 @@ def run_tests_on_directory(sample_dir: str = "sample_images"):
         try:
             res = check_image_quality(str(img_path))
             
-            is_pass = res["pass"]
+            is_pass = res["passed"]
             reason = res["reason"] if res["reason"] is not None else "-"
             all_reasons = ", ".join(res.get("all_failed_reasons", [])) if res.get("all_failed_reasons") else "-"
-            scores = res["scores"]
+            q_score = res.get("quality_score", 0.0)
+            ai_ready = "YES" if res.get("ai_ready_image") is not None else "NO"
+            human_reason = res.get("human_reason", "-")
 
             if is_pass:
                 pass_count += 1
@@ -53,25 +55,23 @@ def run_tests_on_directory(sample_dir: str = "sample_images"):
             table_data.append([
                 img_path.name,
                 status_str,
+                f"{q_score:.2f}",
                 reason,
+                ai_ready,
+                human_reason[:40] + ("..." if len(human_reason) > 40 else ""),
                 all_reasons,
-                f"{scores['blur_score']:.1f}",
-                f"{scores['brightness_score']:.1f}",
-                f"{scores['glare_area_pct']:.1f}%",
-                f"{scores['framing_confidence']:.2f}",
             ])
         except Exception as e:
-            table_data.append([img_path.name, "ERROR", str(e), "-", "-", "-", "-", "-"])
+            table_data.append([img_path.name, "ERROR", "0.00", str(e), "NO", "-", "-"])
 
     headers = [
         "Filename",
         "Verdict",
+        "Q Score",
         "Primary Reason",
+        "AI-Ready",
+        "Human Reason / Retake Prompt",
         "All Failure Reasons",
-        "Blur Score",
-        "Brightness",
-        "Glare Area",
-        "Framing Conf",
     ]
 
     print(tabulate(table_data, headers=headers, tablefmt="grid"))
