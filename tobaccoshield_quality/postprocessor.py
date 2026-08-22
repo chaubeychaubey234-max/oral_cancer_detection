@@ -157,15 +157,15 @@ def enhance_image(
 
 def normalize_image(image_bgr: np.ndarray) -> np.ndarray:
     """
-    Scales pixel values from [0, 255] uint8 → [0.0, 1.0] float32.
+    Converts OpenCV BGR image matrix to RGB order and scales pixel values from [0, 255] uint8 -> [0.0, 1.0] float32.
 
-    Standard pre-processing step expected by most PyTorch and TensorFlow CNN models.
-    Member C can apply their own per-channel mean/std normalisation on top of this.
+    Standard pre-processing step expected by PyTorch and TensorFlow CNN models (like MobileNetV2).
 
     Returns:
-        np.ndarray: float32 array with same spatial shape (H, W, 3), values in [0, 1].
+        np.ndarray: float32 array with RGB channels in range [0.0, 1.0].
     """
-    return image_bgr.astype(np.float32) / 255.0
+    image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+    return image_rgb.astype(np.float32) / 255.0
 
 
 def encode_to_base64(image_bgr: np.ndarray, jpeg_quality: int = 90) -> str:
