@@ -16,13 +16,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { getActiveBaseUrl, getOrFetchToken } from '@/hooks/use-auth';
 
-const CLINICAL_SAMPLES = [
-  { id: '01_normal_buccal_cavity.jpg', title: 'Normal Mucosa', tag: 'Healthy (Low Risk)', icon: '🛡️', color: '#00D2B4' },
-  { id: '02_suspicious_lesion.jpg', title: 'Suspicious Patch', tag: 'Moderate Risk', icon: '⚠️', color: '#F59E0B' },
-  { id: '03_high_risk_lesion.jpg', title: 'High Risk Lesion', tag: 'High Risk Indicator', icon: '🚨', color: '#F43F5E' },
-  { id: '04_blurry_frame.jpg', title: 'Blurry Frame', tag: 'OpenCV Blur Gate', icon: '🌫️', color: '#64748B' },
-  { id: '05_glare_frame.jpg', title: 'Flash Glare', tag: 'OpenCV Glare Gate', icon: '⚡', color: '#EAB308' },
-];
+import { EMBEDDED_CLINICAL_SAMPLES, ClinicalSampleItem } from '@/constants/sampleImages';
 
 export default function ExaminationScreen() {
   const router = useRouter();
@@ -79,33 +73,29 @@ export default function ExaminationScreen() {
     }
   };
 
-  const handleSelectSample = async (sampleId: string) => {
+  const handleSelectSample = async (sample: ClinicalSampleItem) => {
     try {
-      setLoadingSample(sampleId);
-      await getOrFetchToken();
-      const baseUrl = getActiveBaseUrl();
-      const sampleUrl = `${baseUrl}/sample-images/${sampleId}`;
-      const localTarget = `${FileSystem.cacheDirectory}${sampleId}`;
+      setLoadingSample(sample.id);
+      const localTarget = `${FileSystem.cacheDirectory}${sample.id}`;
 
-      const downloadRes = await FileSystem.downloadAsync(sampleUrl, localTarget);
+      // Write bundled image directly from embedded assets to local storage instantly
+      await FileSystem.writeAsStringAsync(localTarget, sample.base64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
 
-      if (downloadRes.status === 200 && downloadRes.uri) {
-        router.push({
-          pathname: '/quality-check',
-          params: {
-            patientId,
-            patientName,
-            age: params.age || '',
-            phone: params.phone || '',
-            imageUri: downloadRes.uri,
-          },
-        });
-      } else {
-        throw new Error(`Download failed with status ${downloadRes.status}`);
-      }
+      router.push({
+        pathname: '/quality-check',
+        params: {
+          patientId,
+          patientName,
+          age: params.age || '',
+          phone: params.phone || '',
+          imageUri: localTarget,
+        },
+      });
     } catch (err: any) {
       console.error('Sample loading error:', err);
-      Alert.alert('Sample Loading Error', 'Unable to fetch clinical sample from server.');
+      Alert.alert('Sample Loading Error', 'Unable to initialize clinical benchmark image.');
     } finally {
       setLoadingSample(null);
     }
@@ -141,8 +131,49 @@ export default function ExaminationScreen() {
         <View style={styles.heading}>
           <Text style={styles.title}>Oral Cavity Protocol</Text>
           <Text style={styles.subtitle}>
-            Capture live optical scan or upload existing oral cavity image for AI screening.
+            Capture live optical scan, pick from gallery, or test verified clinical samples:
           </Text>
+        </View>
+
+        {/* Quick Clinical Test Samples with Real Image Previews */}
+        <View style={styles.samplesSection}>
+          <View style={styles.samplesHeader}>
+            <Text style={styles.samplesTitle}>Clinical Benchmark Suite</Text>
+            <Text style={styles.samplesBadge}>BUNDLED IN APP</Text>
+          </View>
+          <Text style={styles.samplesSubtitle}>
+            1-Tap instant screening with pre-loaded benchmark mucosal scans & quality edge cases:
+          </Text>
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.samplesScroll}>
+            {EMBEDDED_CLINICAL_SAMPLES.map((sample) => (
+              <TouchableOpacity
+                key={sample.id}
+                style={[styles.sampleCard, { borderColor: sample.color }]}
+                onPress={() => handleSelectSample(sample)}
+                disabled={loadingSample !== null}
+                activeOpacity={0.8}
+              >
+                <View style={styles.sampleImageContainer}>
+                  <Image source={sample.source} style={styles.sampleThumbnail} resizeMode="cover" />
+                  <View style={[styles.sampleIconBadge, { backgroundColor: sample.color }]}>
+                    <Text style={styles.sampleIconText}>{sample.icon}</Text>
+                  </View>
+                </View>
+
+                {loadingSample === sample.id ? (
+                  <ActivityIndicator color={sample.color} size="small" style={{ marginVertical: 10 }} />
+                ) : (
+                  <View style={styles.sampleContent}>
+                    <Text style={styles.sampleCardTitle} numberOfLines={1}>{sample.title}</Text>
+                    <View style={[styles.sampleTagBadge, { backgroundColor: `${sample.color}20` }]}>
+                      <Text style={[styles.sampleTagText, { color: sample.color }]}>{sample.tag}</Text>
+                    </View>
+                  </View>
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
 
         {/* Two Main Ingestion Action Buttons */}
@@ -180,41 +211,6 @@ export default function ExaminationScreen() {
             </View>
             <Text style={styles.btnSecondaryArrow}>→</Text>
           </Pressable>
-        </View>
-
-        {/* Quick Clinical Test Samples */}
-        <View style={styles.samplesSection}>
-          <View style={styles.samplesHeader}>
-            <Text style={styles.samplesTitle}>Clinical Reference Samples</Text>
-            <Text style={styles.samplesBadge}>1-TAP TEST</Text>
-          </View>
-          <Text style={styles.samplesSubtitle}>
-            Instant verification against benchmark oral lesions & OpenCV quality edge-cases:
-          </Text>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.samplesScroll}>
-            {CLINICAL_SAMPLES.map((sample) => (
-              <TouchableOpacity
-                key={sample.id}
-                style={[styles.sampleCard, { borderColor: sample.color }]}
-                onPress={() => handleSelectSample(sample.id)}
-                disabled={loadingSample !== null}
-                activeOpacity={0.8}
-              >
-                {loadingSample === sample.id ? (
-                  <ActivityIndicator color={sample.color} size="small" style={{ marginVertical: 12 }} />
-                ) : (
-                  <>
-                    <Text style={styles.sampleIcon}>{sample.icon}</Text>
-                    <Text style={styles.sampleCardTitle}>{sample.title}</Text>
-                    <View style={[styles.sampleTagBadge, { backgroundColor: `${sample.color}20` }]}>
-                      <Text style={[styles.sampleTagText, { color: sample.color }]}>{sample.tag}</Text>
-                    </View>
-                  </>
-                )}
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
         </View>
 
         {/* Instructions Checklist Card */}
@@ -352,12 +348,37 @@ const styles = StyleSheet.create({
   sampleCard: {
     backgroundColor: '#0B1015',
     borderWidth: 1.5,
-    borderRadius: 14,
-    padding: 12,
-    alignItems: 'center',
-    width: 130,
+    borderRadius: 16,
+    overflow: 'hidden',
+    width: 140,
   },
-  sampleIcon: { fontSize: 24, marginBottom: 6 },
+  sampleImageContainer: {
+    width: '100%',
+    height: 85,
+    position: 'relative',
+    backgroundColor: '#161F28',
+  },
+  sampleThumbnail: {
+    width: '100%',
+    height: '100%',
+  },
+  sampleIconBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sampleIconText: {
+    fontSize: 13,
+  },
+  sampleContent: {
+    padding: 10,
+    alignItems: 'center',
+  },
   sampleCardTitle: { color: '#F8FAFC', fontSize: 12, fontWeight: '800', textAlign: 'center', marginBottom: 6 },
   sampleTagBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   sampleTagText: { fontSize: 9, fontWeight: '700' },
