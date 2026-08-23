@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -27,7 +28,13 @@ export default function ResultsScreen() {
     cannotAssess?: string;
     cannotAssessReason?: string;
     modelVersion?: string;
+    heatmapUrl?: string;
+    imageUri?: string;
   }>();
+
+  const [activeImageView, setActiveImageView] = useState<'heatmap' | 'original'>(
+    params.heatmapUrl ? 'heatmap' : 'original'
+  );
 
   const patientName = params.patientName ?? 'Clinical Subject';
   const qualityPassed = params.qualityPassed === 'true';
@@ -50,6 +57,11 @@ export default function ResultsScreen() {
   const handleDone = () => {
     router.replace('/(tabs)');
   };
+
+  const displayImageUri =
+    activeImageView === 'heatmap' && params.heatmapUrl
+      ? params.heatmapUrl
+      : params.imageUri;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -76,6 +88,56 @@ export default function ResultsScreen() {
             <Text style={styles.patientName}>{patientName}</Text>
           </View>
         </View>
+
+        {/* Optical & AI Heatmap Preview Card */}
+        {displayImageUri ? (
+          <View style={styles.mediaCard}>
+            <Image
+              source={{ uri: displayImageUri }}
+              style={styles.mediaImage}
+              resizeMode="cover"
+            />
+
+            {/* Toggle bar */}
+            <View style={styles.toggleBar}>
+              <Pressable
+                style={[
+                  styles.toggleBtn,
+                  activeImageView === 'original' && styles.toggleBtnActive,
+                ]}
+                onPress={() => setActiveImageView('original')}
+              >
+                <Text
+                  style={[
+                    styles.toggleBtnText,
+                    activeImageView === 'original' && styles.toggleBtnTextActive,
+                  ]}
+                >
+                  📷 Raw Frame
+                </Text>
+              </Pressable>
+
+              {params.heatmapUrl ? (
+                <Pressable
+                  style={[
+                    styles.toggleBtn,
+                    activeImageView === 'heatmap' && styles.toggleBtnActiveHeatmap,
+                  ]}
+                  onPress={() => setActiveImageView('heatmap')}
+                >
+                  <Text
+                    style={[
+                      styles.toggleBtnText,
+                      activeImageView === 'heatmap' && styles.toggleBtnTextActive,
+                    ]}
+                  >
+                    🎯 Grad-CAM AI Heatmap
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
 
         {/* Risk Assessment Hero */}
         <View
@@ -283,6 +345,49 @@ const styles = StyleSheet.create({
   patientInfo: { flex: 1 },
   patientLabel: { fontSize: 9, fontWeight: '700', color: '#64748B', letterSpacing: 0.8 },
   patientName: { fontSize: 16, fontWeight: '800', color: '#F8FAFC', marginTop: 2 },
+
+  mediaCard: {
+    backgroundColor: '#11171D',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#1E2B37',
+    overflow: 'hidden',
+    marginBottom: 18,
+  },
+  mediaImage: {
+    width: '100%',
+    height: 220,
+    backgroundColor: '#0A0F14',
+  },
+  toggleBar: {
+    flexDirection: 'row',
+    padding: 8,
+    backgroundColor: '#0D141B',
+    gap: 8,
+  },
+  toggleBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#16202A',
+  },
+  toggleBtnActive: {
+    backgroundColor: '#00D2B4',
+  },
+  toggleBtnActiveHeatmap: {
+    backgroundColor: '#F43F5E',
+  },
+  toggleBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#94A3B8',
+  },
+  toggleBtnTextActive: {
+    color: '#080C0E',
+    fontWeight: '800',
+  },
 
   riskCard: {
     borderRadius: 22, borderWidth: 1.5, padding: 24,

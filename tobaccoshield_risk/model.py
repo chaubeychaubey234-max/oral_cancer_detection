@@ -43,7 +43,7 @@ _cached_model_path = None
 
 def get_model_path() -> Path:
     """Resolves model path from environment variable or standard paths."""
-    env_path = os.getenv("MODEL_PATH", "models/finetuned_v1_best.keras")
+    env_path = os.getenv("MODEL_PATH", "models/finetuned_v2_best.keras")
     p = Path(env_path)
     if p.is_absolute() and p.exists():
         return p
@@ -55,7 +55,7 @@ def get_model_path() -> Path:
         return candidate
     
     # Check default filenames in models folder
-    for fname in ["baseline_v2_best.keras", "finetuned_v1_best.keras", "baseline_v2_final.keras"]:
+    for fname in ["finetuned_v2_best.keras", "finetuned_v1_best.keras", "baseline_v2_best.keras"]:
         cand = repo_root / "models" / fname
         if cand.exists():
             return cand

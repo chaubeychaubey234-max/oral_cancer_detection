@@ -32,49 +32,73 @@ def generate_gradcam(image_array: np.ndarray, model, class_index: int) -> Option
         else:
             img_tensor = image_array
 
-        # Find the last convolutional layer inside the model / backbone
-        last_conv_layer = None
-
-        # Check in top-level model layers
-        for layer in reversed(model.layers):
-            if isinstance(layer, tf.keras.layers.Conv2D) or "conv" in layer.name.lower():
-                last_conv_layer = layer
+        # Check if model has nested backbone (e.g. mobilenetv2)
+        backbone = None
+        for layer in model.layers:
+            if hasattr(layer, "layers") and len(layer.layers) > 1:
+                backbone = layer
                 break
 
-        # If not found directly, check inside the backbone if it's a nested Model
-        if last_conv_layer is None:
-            for layer in model.layers:
-                if hasattr(layer, "layers"):
-                    for sub_layer in reversed(layer.layers):
-                        if isinstance(sub_layer, tf.keras.layers.Conv2D) or "conv" in sub_layer.name.lower():
-                            last_conv_layer = sub_layer
-                            break
-                    if last_conv_layer is not None:
-                        break
+        if backbone is not None:
+            # Find last conv layer in backbone
+            last_conv_layer = None
+            for layer in reversed(backbone.layers):
+                if isinstance(layer, tf.keras.layers.Conv2D) or "conv" in layer.name.lower() or "out_relu" in layer.name.lower():
+                    last_conv_layer = layer
+                    break
 
-        if last_conv_layer is None:
-            logger.warning("Could not find convolutional layer for Grad-CAM.")
-            return _generate_fallback_overlay(img_tensor[0], class_index)
+            if last_conv_layer is None:
+                last_conv_layer = backbone.layers[-1]
 
-        # Grad-CAM Gradient computation
-        grad_model = tf.keras.models.Model(
-            inputs=[model.inputs],
-            outputs=[last_conv_layer.output, model.output]
-        )
+            backbone_model = tf.keras.Model(
+                inputs=backbone.inputs,
+                outputs=[last_conv_layer.output, backbone.output]
+            )
 
-        with tf.GradientTape() as tape:
-            conv_outputs, predictions = grad_model(img_tensor)
-            loss = predictions[:, class_index]
+            with tf.GradientTape() as tape:
+                conv_outputs, backbone_features = backbone_model(img_tensor)
+                tape.watch(conv_outputs)
 
-        grads = tape.gradient(loss, conv_outputs)
-        pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
+                # Propagate through top classifier layers
+                x = backbone_features
+                for layer in model.layers[2:]:
+                    x = layer(x, training=False)
+                loss = x[:, class_index]
 
-        conv_outputs = conv_outputs[0]
-        heatmap = conv_outputs @ pooled_grads[..., tf.newaxis]
-        heatmap = tf.squeeze(heatmap)
+            grads = tape.gradient(loss, conv_outputs)
+            pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
+            conv_outputs = conv_outputs[0]
+            heatmap = conv_outputs @ pooled_grads[..., tf.newaxis]
+            heatmap = tf.squeeze(heatmap)
+            heatmap = tf.maximum(heatmap, 0) / (tf.math.reduce_max(heatmap) + 1e-10)
+            heatmap = heatmap.numpy()
+        else:
+            # Top-level model layers
+            last_conv_layer = None
+            for layer in reversed(model.layers):
+                if isinstance(layer, tf.keras.layers.Conv2D) or "conv" in layer.name.lower():
+                    last_conv_layer = layer
+                    break
 
-        heatmap = tf.maximum(heatmap, 0) / (tf.math.reduce_max(heatmap) + 1e-10)
-        heatmap = heatmap.numpy()
+            if last_conv_layer is None:
+                return _generate_fallback_overlay(img_tensor[0], class_index)
+
+            grad_model = tf.keras.models.Model(
+                inputs=model.inputs,
+                outputs=[last_conv_layer.output, model.output]
+            )
+
+            with tf.GradientTape() as tape:
+                conv_outputs, predictions = grad_model(img_tensor)
+                loss = predictions[:, class_index]
+
+            grads = tape.gradient(loss, conv_outputs)
+            pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
+            conv_outputs = conv_outputs[0]
+            heatmap = conv_outputs @ pooled_grads[..., tf.newaxis]
+            heatmap = tf.squeeze(heatmap)
+            heatmap = tf.maximum(heatmap, 0) / (tf.math.reduce_max(heatmap) + 1e-10)
+            heatmap = heatmap.numpy()
 
         # Resize heatmap to match image size (224, 224)
         heatmap_img = Image.fromarray(np.uint8(255 * heatmap))
@@ -84,12 +108,11 @@ def generate_gradcam(image_array: np.ndarray, model, class_index: int) -> Option
         # Apply colormap (Jet-like heat map)
         orig_img = Image.fromarray(np.uint8(img_tensor[0] * 255)).convert("RGBA")
         
-        # Color mapping: Red for high activation
-        color_heatmap = Image.new("RGBA", (224, 224))
+        # Color mapping: Red/Orange for high activation
         r = heatmap_arr
-        g = np.uint8(heatmap_arr * 0.5)
+        g = np.uint8(heatmap_arr * 0.4)
         b = np.uint8(255 - heatmap_arr)
-        alpha = np.uint8(heatmap_arr * 0.6)  # Transparency proportional to heat
+        alpha = np.uint8(heatmap_arr * 0.65)  # Transparency proportional to heat
         
         rgba = np.stack([r, g, b, alpha], axis=-1)
         overlay = Image.fromarray(rgba, mode="RGBA")
@@ -103,7 +126,7 @@ def generate_gradcam(image_array: np.ndarray, model, class_index: int) -> Option
 
     except Exception as e:
         logger.warning(f"Grad-CAM computation failed ({e}), using fallback overlay.")
-        return _generate_fallback_overlay(image_array[0] if image_array.ndim == 4 else image_array, class_index)
+        return _generate_fallback_overlay(img_tensor[0] if 'img_tensor' in locals() else image_array, class_index)
 
 
 def _generate_fallback_overlay(img_arr: np.ndarray, class_index: int) -> bytes:
