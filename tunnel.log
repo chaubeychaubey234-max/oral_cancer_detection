@@ -52,3 +52,6 @@
 2026-08-23T22:46:50Z INF Registered tunnel connection connIndex=0 connection=0c7098e8-9ab3-4eff-bbda-11650fe06df0 event=0 ip=198.41.192.167 location=del02 protocol=quic
 2026-08-23T22:51:47Z ERR Failed to refresh DNS local resolver error="lookup region1.v2.argotunnel.com: i/o timeout"
 2026-08-23T22:56:52Z ERR Failed to refresh DNS local resolver error="lookup region1.v2.argotunnel.com: i/o timeout"
+2026-08-23T23:01:57Z ERR Failed to refresh DNS local resolver error="lookup region1.v2.argotunnel.com: i/o timeout"
+2026-08-23T23:07:02Z ERR Failed to refresh DNS local resolver error="lookup region1.v2.argotunnel.com: i/o timeout"
+2026-08-23T23:12:07Z ERR Failed to refresh DNS local resolver error="lookup region1.v2.argotunnel.com: i/o timeout"

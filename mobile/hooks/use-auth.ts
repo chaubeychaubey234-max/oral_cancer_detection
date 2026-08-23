@@ -28,7 +28,7 @@ export async function setCustomHost(hostUrl: string): Promise<boolean> {
   return false;
 }
 
-async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 2500): Promise<Response> {
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 8000): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -43,7 +43,7 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 2
 
 async function tryLoginAtHost(baseUrl: string): Promise<string | null> {
   try {
-    const health = await fetchWithTimeout(`${baseUrl}/health`, { method: 'GET' }, 1800);
+    const health = await fetchWithTimeout(`${baseUrl}/health`, { method: 'GET' }, 8000);
     if (!health.ok) return null;
 
     const loginRes = await fetchWithTimeout(`${baseUrl}/auth/login`, {
@@ -53,7 +53,7 @@ async function tryLoginAtHost(baseUrl: string): Promise<string | null> {
         username: HEALTH_WORKER_CREDENTIALS.username,
         password: HEALTH_WORKER_CREDENTIALS.password,
       }).toString(),
-    }, 2000);
+    }, 8000);
 
     if (loginRes.ok) {
       const data = await loginRes.json();
@@ -72,7 +72,7 @@ async function tryLoginAtHost(baseUrl: string): Promise<string | null> {
           role: 'health_worker',
           full_name: 'OralCare Field Worker',
         }),
-      }, 2000);
+      }, 8000);
 
       if (regRes.ok) {
         const retry = await fetchWithTimeout(`${baseUrl}/auth/login`, {
@@ -82,7 +82,7 @@ async function tryLoginAtHost(baseUrl: string): Promise<string | null> {
             username: HEALTH_WORKER_CREDENTIALS.username,
             password: HEALTH_WORKER_CREDENTIALS.password,
           }).toString(),
-        }, 2000);
+        }, 8000);
         if (retry.ok) {
           const data = await retry.json();
           _activeBaseUrl = baseUrl;
