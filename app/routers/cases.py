@@ -53,11 +53,31 @@ def _run_pipeline(db: Session, case: models.Case, image_bytes: bytes) -> models.
 
     processed_bytes = qc.get("processed_image_bytes") or image_bytes
     case.processed_image_path = _save_bytes("images", processed_bytes, ext="jpg")
-    case.status = models.CaseStatus.QUALITY_PASSED if qc["pass"] else models.CaseStatus.QUALITY_FAILED
+
+    if not qc["pass"]:
+        # Quality check failed: Stop pipeline per INTERFACE_CONTRACT.md
+        # The neural risk model must never evaluate sub-threshold or invalid framing
+        assessment = models.RiskAssessment(
+            case_id=case.id,
+            risk_category="cannot_assess",
+            confidence=0.0,
+            cannot_assess=True,
+            cannot_assess_reason=qc.get("human_reason") or f"Quality check flagged ({qc.get('reason')}). Please align phone camera to mucosal tissue.",
+            heatmap_path=None,
+            model_version="quality_gate_v1",
+        )
+        db.add(assessment)
+        case.status = models.CaseStatus.QUALITY_FAILED
+        db.add(case)
+        db.commit()
+        db.refresh(case)
+        return case
+
+    # Quality check passed: Run neural risk classification (Member C)
+    case.status = models.CaseStatus.QUALITY_PASSED
     db.add(case)
     db.commit()
 
-    # Run neural risk classification (Member C) on the image
     risk = run_risk_classification(processed_bytes)
     heatmap_path = None
     if risk.get("heatmap_png_bytes"):
