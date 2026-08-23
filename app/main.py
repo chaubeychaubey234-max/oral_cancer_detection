@@ -48,6 +48,10 @@ SAMPLE_IMAGES_DIR = Path(__file__).resolve().parent.parent / "sample_images"
 if SAMPLE_IMAGES_DIR.exists():
     app.mount("/sample-images", StaticFiles(directory=str(SAMPLE_IMAGES_DIR)), name="sample_images")
 
+UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
+if UPLOAD_DIR.exists():
+    app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
+
 
 @app.get("/health")
 def health():

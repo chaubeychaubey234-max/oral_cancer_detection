@@ -266,7 +266,7 @@ export default function QualityCheckScreen() {
         cannotAssess: caseResult.risk_assessment?.cannot_assess ? 'true' : 'false',
         cannotAssessReason: caseResult.risk_assessment?.cannot_assess_reason ?? '',
         modelVersion: caseResult.risk_assessment?.model_version ?? '',
-        heatmapUrl: caseResult.risk_assessment?.heatmap_url ? `${getApiBaseUrl()}${caseResult.risk_assessment.heatmap_url}` : '',
+        heatmapUrl: caseResult.risk_assessment?.heatmap_url ? `${getActiveBaseUrl()}${caseResult.risk_assessment.heatmap_url}` : '',
         imageUri,
       },
     });

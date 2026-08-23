@@ -17,11 +17,11 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { getActiveBaseUrl, getOrFetchToken } from '@/hooks/use-auth';
 
 const CLINICAL_SAMPLES = [
-  { id: '01_good_mucosa.jpg', title: 'Good Mucosa', tag: 'Standard Oral Cavity', icon: '🩺', color: '#00D2B4' },
-  { id: '02_blurry_mucosa.jpg', title: 'Blurry Frame', tag: 'Laplacian Test', icon: '🌫️', color: '#F43F5E' },
-  { id: '05_glare_mucosa.jpg', title: 'Flash Glare', tag: 'Specular Glare Test', icon: '⚡', color: '#F59E0B' },
-  { id: '03_underexposed_mucosa.jpg', title: 'Underexposed', tag: 'Low Light Test', icon: '🌑', color: '#64748B' },
-  { id: '12_realistic_camera_photo.jpg', title: 'Clinical Macro', tag: 'Phone Camera', icon: '🔬', color: '#38BDF8' },
+  { id: '01_normal_buccal_cavity.jpg', title: 'Normal Mucosa', tag: 'Healthy (Low Risk)', icon: '🛡️', color: '#00D2B4' },
+  { id: '02_suspicious_lesion.jpg', title: 'Suspicious Patch', tag: 'Moderate Risk', icon: '⚠️', color: '#F59E0B' },
+  { id: '03_high_risk_lesion.jpg', title: 'High Risk Lesion', tag: 'High Risk Indicator', icon: '🚨', color: '#F43F5E' },
+  { id: '04_blurry_frame.jpg', title: 'Blurry Frame', tag: 'OpenCV Blur Gate', icon: '🌫️', color: '#64748B' },
+  { id: '05_glare_frame.jpg', title: 'Flash Glare', tag: 'OpenCV Glare Gate', icon: '⚡', color: '#EAB308' },
 ];
 
 export default function ExaminationScreen() {

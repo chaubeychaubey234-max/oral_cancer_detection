@@ -102,8 +102,8 @@ def _run_pipeline(db: Session, case: models.Case, image_bytes: bytes) -> models.
 
 
 def _to_case_out(case: models.Case) -> schemas.CaseOut:
-    image_url = f"/cases/{case.id}/image" if case.image_path else None
-    processed_image_url = f"/cases/{case.id}/processed-image" if case.processed_image_path else None
+    image_url = f"/uploads/images/{Path(case.image_path).name}" if case.image_path else None
+    processed_image_url = f"/uploads/images/{Path(case.processed_image_path).name}" if case.processed_image_path else None
     qa_out = None
     if case.quality_audit:
         qa = case.quality_audit
@@ -121,7 +121,7 @@ def _to_case_out(case: models.Case) -> schemas.CaseOut:
     ra_out = None
     if case.risk_assessment:
         ra = case.risk_assessment
-        heatmap_url = f"/cases/{case.id}/heatmap" if ra.heatmap_path else None
+        heatmap_url = f"/uploads/heatmaps/{Path(ra.heatmap_path).name}" if ra.heatmap_path else None
         ra_out = schemas.RiskAssessmentOut(
             risk_category=ra.risk_category,
             confidence=ra.confidence,
@@ -240,6 +240,33 @@ def list_cases(
             created_at=c.created_at,
         ))
     return out
+
+
+# ---------------------------------------------------------------------------
+# Media delivery: original raw capture, processed image, Grad-CAM heatmap
+# ---------------------------------------------------------------------------
+@router.get("/{case_id}/image")
+def get_case_image(case_id: str, db: Session = Depends(get_db)):
+    case = db.query(models.Case).filter(models.Case.id == case_id).first()
+    if not case or not case.image_path or not Path(case.image_path).exists():
+        raise HTTPException(404, "raw image not found")
+    return FileResponse(case.image_path, media_type="image/jpeg")
+
+
+@router.get("/{case_id}/processed-image")
+def get_case_processed_image(case_id: str, db: Session = Depends(get_db)):
+    case = db.query(models.Case).filter(models.Case.id == case_id).first()
+    if not case or not case.processed_image_path or not Path(case.processed_image_path).exists():
+        raise HTTPException(404, "processed image not found")
+    return FileResponse(case.processed_image_path, media_type="image/jpeg")
+
+
+@router.get("/{case_id}/heatmap")
+def get_case_heatmap(case_id: str, db: Session = Depends(get_db)):
+    case = db.query(models.Case).filter(models.Case.id == case_id).first()
+    if not case or not case.risk_assessment or not case.risk_assessment.heatmap_path or not Path(case.risk_assessment.heatmap_path).exists():
+        raise HTTPException(404, "heatmap overlay not found")
+    return FileResponse(case.risk_assessment.heatmap_path, media_type="image/png")
 
 
 @router.get("/{case_id}", response_model=schemas.CaseOut)
