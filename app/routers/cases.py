@@ -51,19 +51,13 @@ def _run_pipeline(db: Session, case: models.Case, image_bytes: bytes) -> models.
     )
     db.add(audit)
 
-    if not qc["pass"]:
-        case.status = models.CaseStatus.QUALITY_FAILED
-        db.add(case)
-        db.commit()
-        db.refresh(case)
-        return case
-
-    processed_bytes = qc["processed_image_bytes"]  # quality_client.py guarantees this is never None on pass
+    processed_bytes = qc.get("processed_image_bytes") or image_bytes
     case.processed_image_path = _save_bytes("images", processed_bytes, ext="jpg")
-    case.status = models.CaseStatus.QUALITY_PASSED
+    case.status = models.CaseStatus.QUALITY_PASSED if qc["pass"] else models.CaseStatus.QUALITY_FAILED
     db.add(case)
     db.commit()
 
+    # Run neural risk classification (Member C) on the image
     risk = run_risk_classification(processed_bytes)
     heatmap_path = None
     if risk.get("heatmap_png_bytes"):

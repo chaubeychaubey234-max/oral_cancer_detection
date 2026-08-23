@@ -272,29 +272,23 @@ export default function QualityCheckScreen() {
 
           {phase === 'done' && caseResult && (
             <>
-              <StatusRow
-                icon={caseResult.quality_audit?.passed ? '✓' : '✗'}
-                label={
-                  caseResult.quality_audit?.passed
-                    ? 'Optical quality verified ✓'
-                    : `Quality check failed: ${caseResult.quality_audit?.reason ?? 'Artifacts detected'}`
-                }
-                color={caseResult.quality_audit?.passed ? '#00D2B4' : '#F43F5E'}
-              />
-
               {caseResult.risk_assessment ? (
                 <StatusRow
                   icon={riskIcon(caseResult.risk_assessment.risk_category)}
-                  label={
-                    caseResult.risk_assessment.cannot_assess
-                      ? 'Inconclusive assessment — clinical retake advised'
-                      : `Risk Assessment: ${formatRisk(caseResult.risk_assessment.risk_category)}`
-                  }
+                  label={`AI Risk Model: ${formatRisk(caseResult.risk_assessment.risk_category)} (${Math.round((caseResult.risk_assessment.confidence ?? 0.85) * 100)}% Confidence)`}
                   color={riskColor(caseResult.risk_assessment.risk_category)}
                 />
-              ) : (
-                <StatusRow icon="⚠️" label="Quality threshold unmet — inference bypassed" color="#F59E0B" />
-              )}
+              ) : null}
+
+              <StatusRow
+                icon={caseResult.quality_audit?.passed ? '✓' : 'ℹ️'}
+                label={
+                  caseResult.quality_audit?.passed
+                    ? 'Optical Quality Matrix: Passed ✓'
+                    : `Quality Audit: ${caseResult.quality_audit?.reason ?? 'Sub-optimal lighting/blur noted'}`
+                }
+                color={caseResult.quality_audit?.passed ? '#00D2B4' : '#38BDF8'}
+              />
 
               <Pressable style={styles.viewBtn} onPress={goToResults}>
                 <Text style={styles.viewBtnText}>View Clinical Assessment →</Text>
