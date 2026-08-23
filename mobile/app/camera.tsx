@@ -3,6 +3,7 @@ import {
   Alert,
   Image,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -74,8 +75,7 @@ export default function CameraScreen() {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [4, 3],
+        allowsEditing: false,
         quality: 0.85,
       });
 
@@ -166,71 +166,73 @@ export default function CameraScreen() {
     );
   }
 
-  // Image review screen (Dark Theme)
+  // Image review screen (Dark Theme with guaranteed visible buttons)
   if (capturedUri) {
     return (
       <SafeAreaView style={styles.reviewScreen}>
-        <View style={styles.reviewHeader}>
-          <View>
-            <Text style={styles.brand}>OralCare AI</Text>
-            <Text style={styles.section}>OPTICAL REVIEW</Text>
+        <ScrollView contentContainerStyle={styles.reviewScroll} showsVerticalScrollIndicator={false}>
+          <View style={styles.reviewHeader}>
+            <View>
+              <Text style={styles.brand}>OralCare AI</Text>
+              <Text style={styles.section}>OPTICAL REVIEW</Text>
+            </View>
+
+            <View style={styles.stepBadge}>
+              <Text style={styles.stepText}>Step 3 of 4</Text>
+            </View>
           </View>
 
-          <View style={styles.stepBadge}>
-            <Text style={styles.stepText}>Step 3 of 4</Text>
-          </View>
-        </View>
+          <View style={styles.reviewContent}>
+            <View style={styles.successCircle}>
+              <Text style={styles.successIcon}>✓</Text>
+            </View>
 
-        <View style={styles.reviewContent}>
-          <View style={styles.successCircle}>
-            <Text style={styles.successIcon}>✓</Text>
-          </View>
-
-          <Text style={styles.reviewTitle}>Frame Captured</Text>
-          <Text style={styles.reviewSubtitle}>
-            Inspect image clarity before dispatching to OpenCV Quality & ML Risk engine.
-          </Text>
-
-          {/* Captured Image Preview */}
-          <View style={styles.imageContainer}>
-            <Image
-              source={{ uri: capturedUri }}
-              style={styles.capturedImage}
-              resizeMode="cover"
-            />
-          </View>
-
-          <View style={styles.reviewNotice}>
-            <Text style={styles.noticeTitle}>Clinical Verification</Text>
-            <Text style={styles.noticeText}>
-              Ensure the buccal cavity is illuminated, centered, and free of heavy flash glare.
+            <Text style={styles.reviewTitle}>Frame Acquired</Text>
+            <Text style={styles.reviewSubtitle}>
+              Inspect image clarity before dispatching to OpenCV Quality & ML Risk engine.
             </Text>
+
+            {/* Captured Image Preview */}
+            <View style={styles.imageContainer}>
+              <Image
+                source={{ uri: capturedUri }}
+                style={styles.capturedImage}
+                resizeMode="cover"
+              />
+            </View>
+
+            <View style={styles.reviewNotice}>
+              <Text style={styles.noticeTitle}>Clinical Verification</Text>
+              <Text style={styles.noticeText}>
+                Ensure the buccal cavity is illuminated, centered, and free of heavy flash glare.
+              </Text>
+            </View>
           </View>
-        </View>
 
-        <View style={styles.reviewActions}>
-          <Pressable
-            onPress={retakePicture}
-            style={({ pressed }) => [
-              styles.retakeButton,
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            <Text style={styles.retakeIcon}>↻</Text>
-            <Text style={styles.retakeText}>Retake</Text>
-          </Pressable>
+          <View style={styles.reviewActions}>
+            <Pressable
+              onPress={retakePicture}
+              style={({ pressed }) => [
+                styles.retakeButton,
+                pressed && styles.buttonPressed,
+              ]}
+            >
+              <Text style={styles.retakeIcon}>↻</Text>
+              <Text style={styles.retakeText}>Retake / Pick Other</Text>
+            </Pressable>
 
-          <Pressable
-            onPress={useImage}
-            style={({ pressed }) => [
-              styles.useButton,
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            <Text style={styles.useText}>Run AI Analysis</Text>
-            <Text style={styles.useArrow}>→</Text>
-          </Pressable>
-        </View>
+            <Pressable
+              onPress={useImage}
+              style={({ pressed }) => [
+                styles.useButton,
+                pressed && styles.buttonPressed,
+              ]}
+            >
+              <Text style={styles.useText}>Run AI Analysis</Text>
+              <Text style={styles.useArrow}>→</Text>
+            </Pressable>
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -693,6 +695,12 @@ const styles = StyleSheet.create({
   reviewScreen: {
     flex: 1,
     backgroundColor: '#080C0E',
+  },
+
+  reviewScroll: {
+    flexGrow: 1,
+    justifyContent: 'space-between',
+    paddingBottom: 28,
   },
 
   reviewHeader: {

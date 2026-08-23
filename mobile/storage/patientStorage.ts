@@ -11,6 +11,17 @@ export type PatientRecord = {
   imageUri?: string;
   qualityStatus?: 'pending' | 'passed' | 'failed';
   qualityReason?: string;
+  qualityAllFailed?: string[];
+  riskCategory?: 'low' | 'medium' | 'high' | 'cannot_assess' | string;
+  confidence?: number;
+  blurScore?: number;
+  brightnessScore?: number;
+  glareAreaPct?: number;
+  framingConfidence?: number;
+  cannotAssess?: boolean;
+  cannotAssessReason?: string;
+  modelVersion?: string;
+  caseId?: string;
   createdAt: string;
 };
 

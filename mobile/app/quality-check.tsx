@@ -144,7 +144,18 @@ export default function QualityCheckScreen() {
           imageUri: readyUri,
           qualityStatus: data.quality_audit?.passed ? 'passed' : 'failed',
           qualityReason: data.quality_audit?.reason ?? undefined,
-        }).catch(() => {});
+          qualityAllFailed: data.quality_audit?.all_failed_reasons ?? [],
+          riskCategory: data.risk_assessment?.risk_category,
+          confidence: data.risk_assessment?.confidence,
+          blurScore: data.quality_audit?.blur_score ?? undefined,
+          brightnessScore: data.quality_audit?.brightness_score ?? undefined,
+          glareAreaPct: data.quality_audit?.glare_area_pct ?? undefined,
+          framingConfidence: data.quality_audit?.framing_confidence ?? undefined,
+          cannotAssess: data.risk_assessment?.cannot_assess,
+          cannotAssessReason: data.risk_assessment?.cannot_assess_reason ?? undefined,
+          modelVersion: data.risk_assessment?.model_version ?? undefined,
+          caseId: data.id,
+        }).catch((err) => console.error('Patient record update error:', err));
 
         setPhase('done');
       } else {
@@ -155,7 +166,7 @@ export default function QualityCheckScreen() {
       // Seamlessly save into local encrypted patient vault
       try {
         await updatePatientRecord(patientId, {
-          imageUri,
+          imageUri: imageUri,
           qualityStatus: 'pending',
           qualityReason: 'Stored locally (Offline sync ready)',
         });

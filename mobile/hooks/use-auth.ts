@@ -82,18 +82,25 @@ async function tryLoginAtHost(baseUrl: string): Promise<string | null> {
 }
 
 async function getOrFetchToken(): Promise<string> {
-  const hostsToTry = [
+  const savedHost = await AsyncStorage.getItem(ACTIVE_HOST_KEY).catch(() => null);
+
+  const candidateHosts = [
+    savedHost,
     EMULATOR_API_BASE_URL,
     API_BASE_URL,
     'http://127.0.0.1:8000',
-  ];
+    'http://localhost:8000',
+  ].filter((h): h is string => Boolean(h));
 
-  for (const host of hostsToTry) {
+  const uniqueHosts = Array.from(new Set(candidateHosts));
+
+  for (const host of uniqueHosts) {
     const token = await tryLoginAtHost(host);
     if (token) {
       _cachedToken = token;
       _activeBaseUrl = host;
       await AsyncStorage.setItem(TOKEN_KEY, token);
+      await AsyncStorage.setItem(ACTIVE_HOST_KEY, host);
       return token;
     }
   }
