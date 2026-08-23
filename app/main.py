@@ -44,6 +44,10 @@ DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard"
 if DASHBOARD_DIR.exists():
     app.mount("/dashboard", StaticFiles(directory=str(DASHBOARD_DIR), html=True), name="dashboard")
 
+SAMPLE_IMAGES_DIR = Path(__file__).resolve().parent.parent / "sample_images"
+if SAMPLE_IMAGES_DIR.exists():
+    app.mount("/sample-images", StaticFiles(directory=str(SAMPLE_IMAGES_DIR)), name="sample_images")
+
 
 @app.get("/health")
 def health():

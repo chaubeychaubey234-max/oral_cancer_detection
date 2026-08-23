@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as FileSystem from 'expo-file-system/legacy';
 import { getActiveBaseUrl, getOrFetchToken } from '@/hooks/use-auth';
 import { updatePatientRecord, savePatientRecord } from '../storage/patientStorage';
 
@@ -83,104 +84,72 @@ export default function QualityCheckScreen() {
       const token = await getOrFetchToken();
       const baseUrl = getActiveBaseUrl();
 
-      // Clean uri for React Native multipart upload
-      const cleanUri = imageUri.startsWith('file://') || imageUri.startsWith('content://')
-        ? imageUri
-        : `file://${imageUri}`;
-
-      const formData = new FormData();
-      formData.append('patient_id', patientId);
-      formData.append('file', {
-        uri: cleanUri,
-        name: 'oral-examination.jpg',
-        type: 'image/jpeg',
-      } as any);
+      // Ensure file is in accessible cache directory
+      let readyUri = imageUri;
+      if (imageUri.startsWith('file://') || !imageUri.startsWith('content://')) {
+        const rawPath = imageUri.replace('file://', '');
+        const targetCached = `${FileSystem.cacheDirectory}exam_${Date.now()}.jpg`;
+        await FileSystem.copyAsync({ from: imageUri, to: targetCached }).catch(() => {});
+        const info = await FileSystem.getInfoAsync(targetCached).catch(() => ({ exists: false }));
+        if (info.exists) {
+          readyUri = targetCached;
+        }
+      }
 
       setPhase('quality');
 
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 4500);
+      let targetPatientId = patientId;
 
-      let response: Response;
+      // Check if patient exists or create on backend
       try {
-        response = await fetch(`${baseUrl}/cases`, {
+        const createPat = await fetch(`${baseUrl}/patients`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
-          signal: controller.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            name: patientName,
+            age: parseInt(params.age || '40', 10),
+            phone: params.phone || undefined,
+          }),
         });
-      } catch (netErr: any) {
-        clearTimeout(timeout);
-        throw netErr;
-      }
-
-      clearTimeout(timeout);
-
-      if (!response.ok) {
-        // If patient was registered locally, create patient on backend first
-        if (response.status === 404 || patientId.startsWith('local-')) {
-          try {
-            const createPat = await fetch(`${baseUrl}/patients`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({
-                name: patientName,
-                age: parseInt(params.age || '40', 10),
-                phone: params.phone || undefined,
-              }),
-            });
-
-            if (createPat.ok) {
-              const patData = await createPat.json();
-              const retryFormData = new FormData();
-              retryFormData.append('patient_id', patData.id);
-              retryFormData.append('file', {
-                uri: cleanUri,
-                name: 'oral-examination.jpg',
-                type: 'image/jpeg',
-              } as any);
-
-              const retryRes = await fetch(`${baseUrl}/cases`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
-                body: retryFormData,
-              });
-
-              if (retryRes.ok) {
-                const retryData: CaseOut = await retryRes.json();
-                setCaseResult(retryData);
-                await updatePatientRecord(patientId, {
-                  imageUri,
-                  qualityStatus: retryData.quality_audit?.passed ? 'passed' : 'failed',
-                  qualityReason: retryData.quality_audit?.reason ?? undefined,
-                }).catch(() => {});
-                setPhase('done');
-                return;
-              }
-            }
-          } catch (createErr) {
-            console.log('Online patient sync attempt skipped:', createErr);
-          }
+        if (createPat.ok) {
+          const patJson = await createPat.json();
+          targetPatientId = patJson.id;
         }
-
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err?.detail ?? `Inference node status ${response.status}`);
+      } catch (patErr) {
+        console.log('Patient sync attempt:', patErr);
       }
 
       setPhase('model');
-      const data: CaseOut = await response.json();
-      setCaseResult(data);
 
-      await updatePatientRecord(patientId, {
-        imageUri,
-        qualityStatus: data.quality_audit?.passed ? 'passed' : 'failed',
-        qualityReason: data.quality_audit?.reason ?? undefined,
-      }).catch(() => {});
+      const uploadResult = await FileSystem.uploadAsync(`${baseUrl}/cases`, readyUri, {
+        httpMethod: 'POST',
+        uploadType: (FileSystem.FileSystemUploadType?.MULTIPART ?? 1) as any,
+        fieldName: 'file',
+        parameters: {
+          patient_id: targetPatientId,
+        },
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-      setPhase('done');
+      if (uploadResult.status >= 200 && uploadResult.status < 300) {
+        const data: CaseOut = JSON.parse(uploadResult.body);
+        setCaseResult(data);
+
+        await updatePatientRecord(patientId, {
+          imageUri: readyUri,
+          qualityStatus: data.quality_audit?.passed ? 'passed' : 'failed',
+          qualityReason: data.quality_audit?.reason ?? undefined,
+        }).catch(() => {});
+
+        setPhase('done');
+      } else {
+        throw new Error(`Inference upload responded with status ${uploadResult.status}: ${uploadResult.body}`);
+      }
     } catch (error: any) {
       console.log('Pipeline transitioning to offline mode:', error?.message || error);
       // Seamlessly save into local encrypted patient vault
