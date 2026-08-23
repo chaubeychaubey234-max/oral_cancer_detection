@@ -3,15 +3,15 @@ import {
   ActivityIndicator,
   Image,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getActiveBaseUrl, getOrFetchToken } from '@/hooks/use-auth';
-import { updatePatientRecord } from '../storage/patientStorage';
+import { updatePatientRecord, savePatientRecord } from '../storage/patientStorage';
 
 type QualityAudit = {
   passed: boolean;
@@ -58,18 +58,22 @@ export default function QualityCheckScreen() {
   }>();
 
   const imageUri = typeof params.imageUri === 'string' ? params.imageUri : '';
-  const patientId = typeof params.patientId === 'string' ? params.patientId : '';
-  const patientName = typeof params.patientName === 'string' ? params.patientName : 'Patient';
+  const rawPatientId = typeof params.patientId === 'string' ? params.patientId : '';
+  const patientId = rawPatientId || `local-${Date.now()}`;
+  const patientName = typeof params.patientName === 'string' ? params.patientName : 'Clinical Subject';
 
   useEffect(() => {
-    if (imageUri && patientId) {
+    if (imageUri) {
       runFullPipeline();
+    } else {
+      setErrorMsg('No optical frame received. Please retake or select an image.');
+      setPhase('error');
     }
-  }, []);
+  }, [imageUri]);
 
   const runFullPipeline = async () => {
-    if (!imageUri || !patientId) {
-      setErrorMsg('Missing image or patient ID.');
+    if (!imageUri) {
+      setErrorMsg('Missing optical capture frame.');
       setPhase('error');
       return;
     }
@@ -79,10 +83,15 @@ export default function QualityCheckScreen() {
       const token = await getOrFetchToken();
       const baseUrl = getActiveBaseUrl();
 
+      // Clean uri for React Native multipart upload
+      const cleanUri = imageUri.startsWith('file://') || imageUri.startsWith('content://')
+        ? imageUri
+        : `file://${imageUri}`;
+
       const formData = new FormData();
       formData.append('patient_id', patientId);
       formData.append('file', {
-        uri: imageUri,
+        uri: cleanUri,
         name: 'oral-examination.jpg',
         type: 'image/jpeg',
       } as any);
@@ -90,94 +99,99 @@ export default function QualityCheckScreen() {
       setPhase('quality');
 
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3500);
+      const timeout = setTimeout(() => controller.abort(), 4500);
 
-      const response = await fetch(`${baseUrl}/cases`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-        signal: controller.signal,
-      });
+      let response: Response;
+      try {
+        response = await fetch(`${baseUrl}/cases`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+          signal: controller.signal,
+        });
+      } catch (netErr: any) {
+        clearTimeout(timeout);
+        throw netErr;
+      }
 
       clearTimeout(timeout);
 
       if (!response.ok) {
-        // If patient was created locally and doesn't exist on backend, try creating patient first
-        if (response.status === 404 && patientId.startsWith('local-')) {
-          const createPat = await fetch(`${baseUrl}/patients`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              name: patientName,
-              age: parseInt(params.age || '40', 10),
-              phone: params.phone || undefined,
-            }),
-          });
-          if (createPat.ok) {
-            const patData = await createPat.json();
-            // Retry upload with server patient_id
-            const retryFormData = new FormData();
-            retryFormData.append('patient_id', patData.id);
-            retryFormData.append('file', {
-              uri: imageUri,
-              name: 'oral-examination.jpg',
-              type: 'image/jpeg',
-            } as any);
-
-            const retryRes = await fetch(`${baseUrl}/cases`, {
+        // If patient was registered locally, create patient on backend first
+        if (response.status === 404 || patientId.startsWith('local-')) {
+          try {
+            const createPat = await fetch(`${baseUrl}/patients`, {
               method: 'POST',
-              headers: { Authorization: `Bearer ${token}` },
-              body: retryFormData,
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                name: patientName,
+                age: parseInt(params.age || '40', 10),
+                phone: params.phone || undefined,
+              }),
             });
 
-            if (retryRes.ok) {
-              const retryData: CaseOut = await retryRes.json();
-              setCaseResult(retryData);
-              if (patientId) {
+            if (createPat.ok) {
+              const patData = await createPat.json();
+              const retryFormData = new FormData();
+              retryFormData.append('patient_id', patData.id);
+              retryFormData.append('file', {
+                uri: cleanUri,
+                name: 'oral-examination.jpg',
+                type: 'image/jpeg',
+              } as any);
+
+              const retryRes = await fetch(`${baseUrl}/cases`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+                body: retryFormData,
+              });
+
+              if (retryRes.ok) {
+                const retryData: CaseOut = await retryRes.json();
+                setCaseResult(retryData);
                 await updatePatientRecord(patientId, {
                   imageUri,
                   qualityStatus: retryData.quality_audit?.passed ? 'passed' : 'failed',
                   qualityReason: retryData.quality_audit?.reason ?? undefined,
                 }).catch(() => {});
+                setPhase('done');
+                return;
               }
-              setPhase('done');
-              return;
             }
+          } catch (createErr) {
+            console.log('Online patient sync attempt skipped:', createErr);
           }
         }
+
         const err = await response.json().catch(() => ({}));
-        throw new Error(err?.detail ?? `Server error ${response.status}`);
+        throw new Error(err?.detail ?? `Inference node status ${response.status}`);
       }
 
       setPhase('model');
       const data: CaseOut = await response.json();
       setCaseResult(data);
 
-      if (patientId) {
-        await updatePatientRecord(patientId, {
-          imageUri,
-          qualityStatus: data.quality_audit?.passed ? 'passed' : 'failed',
-          qualityReason: data.quality_audit?.reason ?? undefined,
-        }).catch(() => {});
-      }
+      await updatePatientRecord(patientId, {
+        imageUri,
+        qualityStatus: data.quality_audit?.passed ? 'passed' : 'failed',
+        qualityReason: data.quality_audit?.reason ?? undefined,
+      }).catch(() => {});
 
       setPhase('done');
     } catch (error: any) {
       console.log('Pipeline transitioning to offline mode:', error?.message || error);
-      // If offline or network timeout, save image locally and allow proceeding
-      if (patientId) {
-        try {
-          await updatePatientRecord(patientId, {
-            imageUri,
-            qualityStatus: 'pending',
-            qualityReason: 'Stored locally (Offline sync ready)',
-          });
-        } catch (storageErr) {
-          console.error('Local storage update error:', storageErr);
-        }
+      // Seamlessly save into local encrypted patient vault
+      try {
+        await updatePatientRecord(patientId, {
+          imageUri,
+          qualityStatus: 'pending',
+          qualityReason: 'Stored locally (Offline sync ready)',
+        });
+      } catch (storageErr) {
+        console.error('Local storage update error:', storageErr);
       }
       setPhase('offline_saved');
     }
@@ -292,13 +306,13 @@ export default function QualityCheckScreen() {
             <>
               <StatusRow icon="🛡️" label="Frame Secured in Offline Vault" color="#00D2B4" />
               <Text style={styles.offlineText}>
-                Backend server is currently offline or on a different network. The capture has been saved to your local device history and is ready for cloud synchronization once reconnected.
+                The capture has been preserved in the encrypted local patient storage. It is indexed in your archive and will synchronize once reconnected.
               </Text>
               <Pressable style={styles.viewBtn} onPress={() => router.push('/(tabs)/patient-history')}>
-                <Text style={styles.viewBtnText}>View in Patient History →</Text>
+                <Text style={styles.viewBtnText}>View in Patient Archive →</Text>
               </Pressable>
               <Pressable style={styles.retryBtn} onPress={runFullPipeline}>
-                <Text style={styles.retryBtnText}>Retry Server Connection</Text>
+                <Text style={styles.retryBtnText}>↻ Retry Server Analysis</Text>
               </Pressable>
             </>
           )}
@@ -397,7 +411,7 @@ function formatRisk(category: string | null) {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#080C0E' },
-  container: { paddingHorizontal: 22, paddingTop: 24, paddingBottom: 38 },
+  container: { paddingHorizontal: 22, paddingTop: 16, paddingBottom: 38 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   brand: { fontSize: 16, fontWeight: '800', color: '#F8FAFC' },
   section: { fontSize: 9, fontWeight: '700', color: '#00D2B4', letterSpacing: 1.1, marginTop: 2 },
@@ -405,7 +419,7 @@ const styles = StyleSheet.create({
   stepText: { color: '#00D2B4', fontSize: 11, fontWeight: '700' },
   imageContainer: {
     width: '100%', height: 210, borderRadius: 20, overflow: 'hidden',
-    backgroundColor: '#11171D', borderWidth: 1, borderColor: '#1E2B37', marginTop: 22,
+    backgroundColor: '#11171D', borderWidth: 1, borderColor: '#1E2B37', marginTop: 18,
     position: 'relative',
   },
   image: { width: '100%', height: '100%' },
@@ -475,7 +489,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 30,
+    marginTop: 26,
     paddingHorizontal: 6,
   },
   legendLine: { flex: 1, height: 2, backgroundColor: '#1E2B37', marginHorizontal: 6 },

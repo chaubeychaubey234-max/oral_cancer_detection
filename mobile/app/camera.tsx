@@ -3,12 +3,13 @@ import {
   Alert,
   Image,
   Pressable,
-  SafeAreaView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 export default function CameraScreen() {
@@ -26,11 +27,14 @@ export default function CameraScreen() {
     phone?: string;
   }>();
 
+  const patientId = params.patientId || `local-${Date.now()}`;
+  const patientName = params.patientName || 'Clinical Subject';
+
   useEffect(() => {
     if (permission && !permission.granted && !permission.canAskAgain) {
       Alert.alert(
         'Camera permission required',
-        'Please enable camera access in your phone settings.'
+        'Please enable camera access in your phone settings or select an image from the library.'
       );
     }
   }, [permission]);
@@ -45,7 +49,6 @@ export default function CameraScreen() {
 
       const photo = await cameraRef.current.takePictureAsync({
         quality: 0.85,
-        skipProcessing: true,
       });
 
       if (photo?.uri) {
@@ -53,17 +56,37 @@ export default function CameraScreen() {
       } else {
         Alert.alert(
           'Capture failed',
-          'No image was returned. Please try again.'
+          'No image was returned. Please try again or select from gallery.'
         );
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Camera capture error:', error);
       Alert.alert(
         'Capture failed',
-        'The image could not be captured. Please try again.'
+        'Unable to take photo via hardware sensor. You can also pick an image from gallery.'
       );
     } finally {
       setIsCapturing(false);
+    }
+  };
+
+  const pickFromGallery = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.85,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const uri = result.assets[0].uri;
+        if (uri) {
+          setCapturedUri(uri);
+        }
+      }
+    } catch (err) {
+      console.error('Gallery pick error:', err);
     }
   };
 
@@ -73,15 +96,15 @@ export default function CameraScreen() {
 
   const useImage = () => {
     if (!capturedUri) {
-      Alert.alert('No image', 'Please capture an image first.');
+      Alert.alert('No image', 'Please capture or select an image first.');
       return;
     }
 
     router.push({
       pathname: '/quality-check',
       params: {
-        patientId: params.patientId ?? '',
-        patientName: params.patientName ?? '',
+        patientId,
+        patientName,
         age: params.age ?? '',
         phone: params.phone ?? '',
         imageUri: capturedUri,
@@ -98,7 +121,7 @@ export default function CameraScreen() {
     );
   }
 
-  // Permission denied
+  // Permission denied view (with gallery option)
   if (!permission.granted) {
     return (
       <SafeAreaView style={styles.centerScreen}>
@@ -110,7 +133,7 @@ export default function CameraScreen() {
           <Text style={styles.permissionTitle}>Camera Access Required</Text>
 
           <Text style={styles.permissionText}>
-            Optical access is required to capture the oral cavity image for AI screening.
+            Optical access is required to capture the oral cavity image for AI screening, or choose an existing photo.
           </Text>
 
           {permission.canAskAgain && (
@@ -124,6 +147,16 @@ export default function CameraScreen() {
               <Text style={styles.permissionButtonText}>Grant Camera Permission</Text>
             </Pressable>
           )}
+
+          <Pressable
+            onPress={pickFromGallery}
+            style={({ pressed }) => [
+              styles.galleryButton,
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            <Text style={styles.galleryButtonText}>📁 Select from Gallery / Samples</Text>
+          </Pressable>
 
           <Pressable onPress={() => router.back()} style={styles.backButton}>
             <Text style={styles.backButtonText}>Cancel & Go Back</Text>
@@ -245,7 +278,9 @@ export default function CameraScreen() {
           <Text style={styles.cameraSubtitle}>Keep Mucosa In Viewfinder</Text>
         </View>
 
-        <View style={styles.headerSpacer} />
+        <Pressable onPress={pickFromGallery} style={styles.galleryTopButton}>
+          <Text style={styles.galleryTopText}>📁</Text>
+        </Pressable>
       </View>
 
       {/* Guidance */}
@@ -264,19 +299,28 @@ export default function CameraScreen() {
           ⚡ High Light • No Flash Glare • Keep Steady
         </Text>
 
-        <Pressable
-          onPress={takePicture}
-          disabled={isCapturing}
-          style={({ pressed }) => [
-            styles.captureOuter,
-            pressed && styles.capturePressed,
-          ]}
-        >
-          <View style={styles.captureInner} />
-        </Pressable>
+        <View style={styles.captureRow}>
+          <Pressable onPress={pickFromGallery} style={styles.sidePickBtn}>
+            <Text style={styles.sidePickIcon}>📁</Text>
+            <Text style={styles.sidePickText}>Gallery</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={takePicture}
+            disabled={isCapturing}
+            style={({ pressed }) => [
+              styles.captureOuter,
+              pressed && styles.capturePressed,
+            ]}
+          >
+            <View style={styles.captureInner} />
+          </Pressable>
+
+          <View style={styles.sideSpacer} />
+        </View>
 
         <Text style={styles.captureLabel}>
-          {isCapturing ? 'Processing frame...' : 'Capture Frame'}
+          {isCapturing ? 'Processing frame...' : 'Tap To Capture Frame'}
         </Text>
       </View>
     </SafeAreaView>
@@ -348,6 +392,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#00D2B4',
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 12,
   },
 
   permissionButtonText: {
@@ -356,12 +401,30 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
+  galleryButton: {
+    width: '100%',
+    height: 50,
+    borderRadius: 14,
+    backgroundColor: '#16282E',
+    borderWidth: 1,
+    borderColor: '#00D2B4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+
+  galleryButtonText: {
+    color: '#00D2B4',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
   backButton: {
     paddingVertical: 14,
   },
 
   backButtonText: {
-    color: '#00D2B4',
+    color: '#94A3B8',
     fontSize: 13,
     fontWeight: '700',
   },
@@ -499,8 +562,19 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  headerSpacer: {
+  galleryTopButton: {
     width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(17,23,29,0.85)',
+    borderWidth: 1,
+    borderColor: '#243442',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  galleryTopText: {
+    fontSize: 18,
   },
 
   guideContainer: {
@@ -537,7 +611,7 @@ const styles = StyleSheet.create({
 
   captureControls: {
     position: 'absolute',
-    bottom: 40,
+    bottom: 36,
     left: 20,
     right: 20,
     alignItems: 'center',
@@ -549,6 +623,36 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 16,
     letterSpacing: 0.4,
+  },
+
+  captureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    paddingHorizontal: 20,
+  },
+
+  sidePickBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 10,
+    width: 60,
+  },
+
+  sidePickIcon: {
+    fontSize: 22,
+  },
+
+  sidePickText: {
+    color: '#94A3B8',
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+
+  sideSpacer: {
+    width: 60,
   },
 
   captureOuter: {
@@ -564,6 +668,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 12,
     elevation: 8,
+    marginHorizontal: 16,
   },
 
   capturePressed: {
@@ -595,7 +700,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 22,
-    paddingTop: 24,
+    paddingTop: 16,
   },
 
   brand: {
@@ -631,13 +736,13 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     paddingHorizontal: 22,
-    paddingTop: 24,
+    paddingTop: 18,
   },
 
   successCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: '#16282E',
     borderWidth: 1,
     borderColor: '#00D2B4',
@@ -647,15 +752,15 @@ const styles = StyleSheet.create({
 
   successIcon: {
     color: '#00D2B4',
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '900',
   },
 
   reviewTitle: {
     color: '#FFFFFF',
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '800',
-    marginTop: 12,
+    marginTop: 10,
   },
 
   reviewSubtitle: {
@@ -663,19 +768,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     lineHeight: 18,
-    marginTop: 6,
+    marginTop: 4,
     maxWidth: 320,
   },
 
   imageContainer: {
     width: '100%',
-    height: 230,
+    height: 220,
     borderRadius: 20,
     overflow: 'hidden',
     backgroundColor: '#11171D',
     borderWidth: 1,
     borderColor: '#1E2B37',
-    marginTop: 20,
+    marginTop: 16,
   },
 
   capturedImage: {
