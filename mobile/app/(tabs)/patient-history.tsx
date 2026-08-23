@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import {
   getPatientHistory,
   PatientRecord,
@@ -35,6 +35,13 @@ export default function PatientHistoryScreen() {
       setRefreshing(false);
     }
   };
+
+  // Reload history automatically every time this tab screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadHistory();
+    }, [])
+  );
 
   useEffect(() => {
     loadHistory();

@@ -110,11 +110,27 @@ export async function updatePatientRecord(
   try {
     const patients = await getPatientHistory();
 
-    const updatedPatients = patients.map((patient) =>
-      patient.id === id
-        ? { ...patient, ...updates }
-        : patient
-    );
+    let found = false;
+    const updatedPatients = patients.map((patient) => {
+      if (patient.id === id) {
+        found = true;
+        return { ...patient, ...updates };
+      }
+      return patient;
+    });
+
+    if (!found) {
+      // Upsert: Create entry if not found so AI screening result is never lost
+      const newRecord: PatientRecord = {
+        id,
+        patientName: updates.patientName || 'Clinical Subject',
+        age: updates.age || '40',
+        phone: updates.phone,
+        createdAt: updates.createdAt || new Date().toISOString(),
+        ...updates,
+      };
+      updatedPatients.unshift(newRecord);
+    }
 
     await AsyncStorage.setItem(
       PATIENT_HISTORY_KEY,
