@@ -1,4 +1,3 @@
-
 import React from 'react';
 import {
   Pressable,
@@ -20,8 +19,8 @@ export default function ExaminationScreen() {
     phone?: string;
   }>();
 
-  const patientName = params.patientName || 'Patient';
-  const patientId = params.patientId || 'Not assigned';
+  const patientName = params.patientName || 'Clinical Subject';
+  const patientId = params.patientId || 'Unassigned Session';
 
   const handleStartCapture = () => {
     router.push({
@@ -44,23 +43,25 @@ export default function ExaminationScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.brand}>OralCare</Text>
+            <Text style={styles.brand}>OralCare AI</Text>
             <Text style={styles.section}>ORAL EXAMINATION</Text>
           </View>
 
           <View style={styles.stepBadge}>
-            <Text style={styles.stepText}>2 / 4</Text>
+            <Text style={styles.stepText}>Step 2 of 4</Text>
           </View>
         </View>
 
-        {/* Patient */}
+        {/* Patient Pill */}
         <View style={styles.patientCard}>
           <View style={styles.patientIcon}>
-            <Text style={styles.patientIconText}>P</Text>
+            <Text style={styles.patientIconText}>
+              {patientName.charAt(0).toUpperCase()}
+            </Text>
           </View>
 
           <View style={styles.patientInfo}>
-            <Text style={styles.patientLabel}>CURRENT PATIENT</Text>
+            <Text style={styles.patientLabel}>ACTIVE PATIENT</Text>
             <Text style={styles.patientName}>{patientName}</Text>
             <Text style={styles.patientId}>ID: {patientId}</Text>
           </View>
@@ -68,54 +69,52 @@ export default function ExaminationScreen() {
 
         {/* Main heading */}
         <View style={styles.heading}>
-          <Text style={styles.title}>Ready for the examination?</Text>
-
+          <Text style={styles.title}>Oral Cavity Protocol</Text>
           <Text style={styles.subtitle}>
-            We will guide you through capturing a clear image of the inside
-            of the mouth.
+            Guided clinical optical scanning for the buccal mucosa & oral mucosa layers.
           </Text>
         </View>
 
-        {/* Instructions */}
+        {/* Instructions Card */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Before you start</Text>
+          <Text style={styles.cardTitle}>Capture Checklist</Text>
 
           <Instruction
             number="1"
-            title="Find good lighting"
-            description="Use a bright, evenly lit area and avoid strong reflections."
+            title="Sufficient Clinical Illumination"
+            description="Use direct bright ambient light or phone torch to avoid dark mucosa underexposure."
           />
 
           <Instruction
             number="2"
-            title="Position the patient"
-            description="Ask the patient to sit comfortably and keep their head still."
+            title="Stabilize & Retract Cheek"
+            description="Ask the patient to keep still and gently open the mouth for full buccal cavity visibility."
           />
 
           <Instruction
             number="3"
-            title="Follow the camera guide"
-            description="The on-screen guide will help you frame the buccal cavity."
+            title="Align Inside Optical HUD"
+            description="Keep the target mucosal tissue centered within the white rectangular viewfinder."
           />
 
           <Instruction
             number="4"
-            title="Retake if needed"
-            description="If the image is unclear, you can retake it before continuing."
+            title="Automated Quality Filtering"
+            description="The Member B OpenCV engine will check blur, lighting, and glare before ML inference."
             last
           />
         </View>
 
-        {/* Capture area */}
+        {/* Capture preview card */}
         <View style={styles.capturePreview}>
           <View style={styles.previewCircle}>
-            <Text style={styles.previewIcon}>⌁</Text>
+            <Text style={styles.previewIcon}>📸</Text>
           </View>
 
-          <Text style={styles.previewTitle}>Guided image capture</Text>
+          <Text style={styles.previewTitle}>Optical Telemetry Ready</Text>
 
           <Text style={styles.previewText}>
-            Keep the inside of the cheek centred in the camera guide.
+            Align target mucosal surface within the guided frame.
           </Text>
         </View>
 
@@ -127,12 +126,12 @@ export default function ExaminationScreen() {
             pressed && styles.buttonPressed,
           ]}
         >
-          <Text style={styles.startButtonText}>Start camera</Text>
+          <Text style={styles.startButtonText}>Launch Guided Camera</Text>
           <Text style={styles.arrow}>→</Text>
         </Pressable>
 
         <Text style={styles.footer}>
-          Your patient information is stored locally while working offline.
+          🔒 Quality verification runs on-device & encrypted backend prior to AI classification.
         </Text>
       </ScrollView>
     </SafeAreaView>
@@ -167,12 +166,12 @@ function Instruction({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F5F9F8',
+    backgroundColor: '#080C0E',
   },
 
   container: {
     paddingHorizontal: 22,
-    paddingTop: 22,
+    paddingTop: 24,
     paddingBottom: 38,
   },
 
@@ -183,57 +182,60 @@ const styles = StyleSheet.create({
   },
 
   brand: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#176B6B',
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#F8FAFC',
+    letterSpacing: 0.3,
   },
 
   section: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
-    color: '#87969A',
-    letterSpacing: 0.8,
-    marginTop: 3,
+    color: '#00D2B4',
+    letterSpacing: 1.1,
+    marginTop: 2,
   },
 
   stepBadge: {
-    backgroundColor: '#E8F3F0',
+    backgroundColor: '#16282E',
+    borderWidth: 1,
+    borderColor: '#00D2B4',
     paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 15,
+    paddingVertical: 5,
+    borderRadius: 14,
   },
 
   stepText: {
-    color: '#176B6B',
-    fontSize: 12,
+    color: '#00D2B4',
+    fontSize: 11,
     fontWeight: '700',
   },
 
   patientCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#11171D',
     borderWidth: 1,
-    borderColor: '#E0E9E7',
-    borderRadius: 15,
+    borderColor: '#1E2B37',
+    borderRadius: 16,
     padding: 14,
-    marginTop: 25,
+    marginTop: 22,
   },
 
   patientIcon: {
-    width: 45,
-    height: 45,
-    borderRadius: 23,
-    backgroundColor: '#E2F0ED',
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#00D2B4',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 14,
   },
 
   patientIconText: {
-    color: '#176B6B',
+    color: '#080C0E',
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '900',
   },
 
   patientInfo: {
@@ -241,62 +243,63 @@ const styles = StyleSheet.create({
   },
 
   patientLabel: {
-    color: '#87969A',
+    color: '#64748B',
     fontSize: 9,
     fontWeight: '700',
     letterSpacing: 0.8,
   },
 
   patientName: {
-    color: '#19323C',
+    color: '#F8FAFC',
     fontSize: 16,
     fontWeight: '700',
     marginTop: 2,
   },
 
   patientId: {
-    color: '#72838A',
+    color: '#94A3B8',
     fontSize: 11,
     marginTop: 2,
   },
 
   heading: {
-    marginTop: 27,
-    marginBottom: 20,
+    marginTop: 24,
+    marginBottom: 18,
   },
 
   title: {
-    color: '#19323C',
-    fontSize: 27,
-    lineHeight: 34,
-    fontWeight: '700',
+    color: '#FFFFFF',
+    fontSize: 26,
+    lineHeight: 32,
+    fontWeight: '800',
+    letterSpacing: -0.4,
   },
 
   subtitle: {
-    color: '#657980',
+    color: '#94A3B8',
     fontSize: 13,
-    lineHeight: 20,
-    marginTop: 8,
+    lineHeight: 19,
+    marginTop: 6,
   },
 
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#11171D',
     borderWidth: 1,
-    borderColor: '#E0E9E7',
-    borderRadius: 17,
-    padding: 18,
+    borderColor: '#1E2B37',
+    borderRadius: 18,
+    padding: 20,
   },
 
   cardTitle: {
-    color: '#19323C',
-    fontSize: 17,
+    color: '#F1F5F9',
+    fontSize: 16,
     fontWeight: '700',
-    marginBottom: 18,
+    marginBottom: 16,
   },
 
   instruction: {
     flexDirection: 'row',
-    marginBottom: 18,
+    marginBottom: 16,
   },
 
   lastInstruction: {
@@ -304,17 +307,20 @@ const styles = StyleSheet.create({
   },
 
   numberCircle: {
-    width: 29,
-    height: 29,
-    borderRadius: 15,
-    backgroundColor: '#E4F1EE',
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    backgroundColor: '#16282E',
+    borderWidth: 1,
+    borderColor: '#00D2B4',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 11,
+    marginRight: 12,
+    marginTop: 2,
   },
 
   numberText: {
-    color: '#176B6B',
+    color: '#00D2B4',
     fontSize: 12,
     fontWeight: '800',
   },
@@ -324,88 +330,96 @@ const styles = StyleSheet.create({
   },
 
   instructionTitle: {
-    color: '#304A52',
+    color: '#E2E8F0',
     fontSize: 13,
     fontWeight: '700',
     marginBottom: 3,
   },
 
   instructionText: {
-    color: '#75868B',
+    color: '#94A3B8',
     fontSize: 11,
-    lineHeight: 17,
+    lineHeight: 16,
   },
 
   capturePreview: {
-    backgroundColor: '#EAF4F1',
-    borderRadius: 17,
-    padding: 22,
+    backgroundColor: '#0E171E',
+    borderWidth: 1,
+    borderColor: '#1A2936',
+    borderRadius: 18,
+    padding: 20,
     alignItems: 'center',
-    marginTop: 15,
+    marginTop: 16,
   },
 
   previewCircle: {
-    width: 55,
-    height: 55,
-    borderRadius: 28,
-    backgroundColor: '#D7EAE5',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#16282E',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
   },
 
   previewIcon: {
-    color: '#176B6B',
-    fontSize: 27,
+    fontSize: 24,
   },
 
   previewTitle: {
-    color: '#31565B',
+    color: '#F1F5F9',
     fontSize: 14,
     fontWeight: '700',
   },
 
   previewText: {
-    color: '#718187',
+    color: '#94A3B8',
     fontSize: 11,
-    lineHeight: 17,
+    lineHeight: 16,
     textAlign: 'center',
     marginTop: 4,
     maxWidth: 290,
   },
 
   startButton: {
-    height: 53,
-    borderRadius: 12,
-    backgroundColor: '#176B6B',
+    height: 54,
+    borderRadius: 14,
+    backgroundColor: '#00D2B4',
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    marginTop: 20,
+    marginTop: 22,
+    shadowColor: '#00D2B4',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 6,
   },
 
   buttonPressed: {
-    opacity: 0.75,
+    opacity: 0.8,
   },
 
   startButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
+    color: '#080C0E',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
 
   arrow: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    marginLeft: 9,
+    color: '#080C0E',
+    fontSize: 18,
+    marginLeft: 8,
+    fontWeight: '800',
   },
 
   footer: {
-    color: '#87969A',
+    color: '#64748B',
     fontSize: 10,
-    lineHeight: 16,
+    lineHeight: 15,
     textAlign: 'center',
-    marginTop: 14,
-    paddingHorizontal: 20,
+    marginTop: 16,
+    paddingHorizontal: 16,
   },
 });

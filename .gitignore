@@ -13,3 +13,5 @@ tests/test_tobaccoshield.db
 .venv/
 venv/
 .pytest_cache/
+.DS_Store
+*.DS_Store

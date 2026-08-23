@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -46,6 +45,7 @@ export default function CameraScreen() {
 
       const photo = await cameraRef.current.takePictureAsync({
         quality: 0.85,
+        skipProcessing: true,
       });
 
       if (photo?.uri) {
@@ -58,7 +58,6 @@ export default function CameraScreen() {
       }
     } catch (error) {
       console.error('Camera capture error:', error);
-
       Alert.alert(
         'Capture failed',
         'The image could not be captured. Please try again.'
@@ -90,16 +89,16 @@ export default function CameraScreen() {
     });
   };
 
-  // Camera permission is still loading
+  // Permission loading
   if (!permission) {
     return (
       <SafeAreaView style={styles.centerScreen}>
-        <Text style={styles.loadingText}>Preparing camera...</Text>
+        <Text style={styles.loadingText}>Initializing optical sensor...</Text>
       </SafeAreaView>
     );
   }
 
-  // Permission has not been granted
+  // Permission denied
   if (!permission.granted) {
     return (
       <SafeAreaView style={styles.centerScreen}>
@@ -108,12 +107,10 @@ export default function CameraScreen() {
             <Text style={styles.cameraIcon}>📷</Text>
           </View>
 
-          <Text style={styles.permissionTitle}>
-            Camera access needed
-          </Text>
+          <Text style={styles.permissionTitle}>Camera Access Required</Text>
 
           <Text style={styles.permissionText}>
-            Camera access is required to capture the oral examination image.
+            Optical access is required to capture the oral cavity image for AI screening.
           </Text>
 
           {permission.canAskAgain && (
@@ -124,35 +121,30 @@ export default function CameraScreen() {
                 pressed && styles.buttonPressed,
               ]}
             >
-              <Text style={styles.permissionButtonText}>
-                Allow camera
-              </Text>
+              <Text style={styles.permissionButtonText}>Grant Camera Permission</Text>
             </Pressable>
           )}
 
-          <Pressable
-            onPress={() => router.back()}
-            style={styles.backButton}
-          >
-            <Text style={styles.backButtonText}>Go back</Text>
+          <Pressable onPress={() => router.back()} style={styles.backButton}>
+            <Text style={styles.backButtonText}>Cancel & Go Back</Text>
           </Pressable>
         </View>
       </SafeAreaView>
     );
   }
 
-  // Image review screen
+  // Image review screen (Dark Theme)
   if (capturedUri) {
     return (
       <SafeAreaView style={styles.reviewScreen}>
         <View style={styles.reviewHeader}>
           <View>
-            <Text style={styles.brand}>OralCare</Text>
-            <Text style={styles.section}>IMAGE REVIEW</Text>
+            <Text style={styles.brand}>OralCare AI</Text>
+            <Text style={styles.section}>OPTICAL REVIEW</Text>
           </View>
 
           <View style={styles.stepBadge}>
-            <Text style={styles.stepText}>3 / 4</Text>
+            <Text style={styles.stepText}>Step 3 of 4</Text>
           </View>
         </View>
 
@@ -161,15 +153,12 @@ export default function CameraScreen() {
             <Text style={styles.successIcon}>✓</Text>
           </View>
 
-          <Text style={styles.reviewTitle}>
-            Image captured
-          </Text>
-
+          <Text style={styles.reviewTitle}>Frame Captured</Text>
           <Text style={styles.reviewSubtitle}>
-            Check the image before sending it for quality checking.
+            Inspect image clarity before dispatching to OpenCV Quality & ML Risk engine.
           </Text>
 
-          {/* Actual captured image */}
+          {/* Captured Image Preview */}
           <View style={styles.imageContainer}>
             <Image
               source={{ uri: capturedUri }}
@@ -179,13 +168,9 @@ export default function CameraScreen() {
           </View>
 
           <View style={styles.reviewNotice}>
-            <Text style={styles.noticeTitle}>
-              Check the image
-            </Text>
-
+            <Text style={styles.noticeTitle}>Clinical Verification</Text>
             <Text style={styles.noticeText}>
-              Make sure the buccal cavity is visible, properly framed,
-              well illuminated, and free from excessive glare.
+              Ensure the buccal cavity is illuminated, centered, and free of heavy flash glare.
             </Text>
           </View>
         </View>
@@ -209,7 +194,7 @@ export default function CameraScreen() {
               pressed && styles.buttonPressed,
             ]}
           >
-            <Text style={styles.useText}>Use image</Text>
+            <Text style={styles.useText}>Run AI Analysis</Text>
             <Text style={styles.useArrow}>→</Text>
           </Pressable>
         </View>
@@ -217,7 +202,7 @@ export default function CameraScreen() {
     );
   }
 
-  // Live camera screen
+  // Live camera screen (Dark Cyber HUD)
   return (
     <SafeAreaView style={styles.cameraScreen}>
       <CameraView
@@ -227,10 +212,7 @@ export default function CameraScreen() {
       />
 
       {/* Dark framing overlay */}
-      <View
-        style={styles.overlay}
-        pointerEvents="none"
-      >
+      <View style={styles.overlay} pointerEvents="none">
         <View style={styles.topShade} />
 
         <View style={styles.middleArea}>
@@ -241,6 +223,9 @@ export default function CameraScreen() {
             <View style={[styles.corner, styles.topRight]} />
             <View style={[styles.corner, styles.bottomLeft]} />
             <View style={[styles.corner, styles.bottomRight]} />
+            
+            {/* Center target crosshair */}
+            <View style={styles.centerTarget} />
           </View>
 
           <View style={styles.sideShade} />
@@ -251,21 +236,13 @@ export default function CameraScreen() {
 
       {/* Header */}
       <View style={styles.cameraHeader}>
-        <Pressable
-          onPress={() => router.back()}
-          style={styles.closeButton}
-        >
+        <Pressable onPress={() => router.back()} style={styles.closeButton}>
           <Text style={styles.closeText}>×</Text>
         </Pressable>
 
         <View style={styles.cameraTitleContainer}>
-          <Text style={styles.cameraTitle}>
-            Guided capture
-          </Text>
-
-          <Text style={styles.cameraSubtitle}>
-            Buccal cavity
-          </Text>
+          <Text style={styles.cameraTitle}>Buccal Cavity Alignment</Text>
+          <Text style={styles.cameraSubtitle}>Keep Mucosa In Viewfinder</Text>
         </View>
 
         <View style={styles.headerSpacer} />
@@ -273,19 +250,18 @@ export default function CameraScreen() {
 
       {/* Guidance */}
       <View style={styles.guideContainer}>
-        <Text style={styles.guideTitle}>
-          Position the inside of the cheek
-        </Text>
-
+        <View style={styles.guidePill}>
+          <Text style={styles.guideTitle}>Center Buccal Mucosa</Text>
+        </View>
         <Text style={styles.guideText}>
-          Keep the buccal cavity inside the frame and hold the phone steady.
+          Align the inside of the cheek within the frame. Hold device steady.
         </Text>
       </View>
 
       {/* Capture button */}
       <View style={styles.captureControls}>
         <Text style={styles.captureHint}>
-          Good lighting • No glare • Keep steady
+          ⚡ High Light • No Flash Glare • Keep Steady
         </Text>
 
         <Pressable
@@ -300,7 +276,7 @@ export default function CameraScreen() {
         </Pressable>
 
         <Text style={styles.captureLabel}>
-          {isCapturing ? 'Capturing...' : 'Capture image'}
+          {isCapturing ? 'Processing frame...' : 'Capture Frame'}
         </Text>
       </View>
     </SafeAreaView>
@@ -310,71 +286,74 @@ export default function CameraScreen() {
 const styles = StyleSheet.create({
   centerScreen: {
     flex: 1,
-    backgroundColor: '#F5F9F8',
+    backgroundColor: '#080C0E',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 25,
+    padding: 24,
   },
 
   loadingText: {
-    color: '#51676E',
+    color: '#94A3B8',
     fontSize: 14,
+    fontWeight: '600',
   },
 
   permissionCard: {
     width: '100%',
     maxWidth: 380,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 25,
+    backgroundColor: '#11171D',
+    borderRadius: 22,
+    padding: 24,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#DDE7E5',
+    borderColor: '#1E2B37',
   },
 
   cameraIconCircle: {
-    width: 62,
-    height: 62,
-    borderRadius: 31,
-    backgroundColor: '#E3F0ED',
+    width: 64,
+    height: 64,
+    borderRadius: 22,
+    backgroundColor: '#16282E',
+    borderWidth: 1,
+    borderColor: '#00D2B4',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
   },
 
   cameraIcon: {
-    fontSize: 27,
+    fontSize: 28,
   },
 
   permissionTitle: {
-    color: '#19323C',
-    fontSize: 21,
-    fontWeight: '700',
+    color: '#F8FAFC',
+    fontSize: 20,
+    fontWeight: '800',
     textAlign: 'center',
   },
 
   permissionText: {
-    color: '#718187',
+    color: '#94A3B8',
     fontSize: 13,
     lineHeight: 20,
     textAlign: 'center',
-    marginTop: 9,
+    marginTop: 8,
     marginBottom: 20,
   },
 
   permissionButton: {
     width: '100%',
     height: 52,
-    borderRadius: 12,
-    backgroundColor: '#176B6B',
+    borderRadius: 14,
+    backgroundColor: '#00D2B4',
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   permissionButtonText: {
-    color: '#FFFFFF',
+    color: '#080C0E',
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '800',
   },
 
   backButton: {
@@ -382,7 +361,7 @@ const styles = StyleSheet.create({
   },
 
   backButtonText: {
-    color: '#176B6B',
+    color: '#00D2B4',
     fontSize: 13,
     fontWeight: '700',
   },
@@ -398,31 +377,34 @@ const styles = StyleSheet.create({
 
   topShade: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(8,12,14,0.65)',
   },
 
   middleArea: {
-    height: 270,
+    height: 280,
     flexDirection: 'row',
   },
 
   sideShade: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(8,12,14,0.65)',
   },
 
   frame: {
-    width: '82%',
+    width: '84%',
     height: '100%',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.55)',
+    borderColor: 'rgba(0,210,180,0.4)',
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   corner: {
     position: 'absolute',
-    width: 30,
-    height: 30,
-    borderColor: '#FFFFFF',
+    width: 28,
+    height: 28,
+    borderColor: '#00D2B4',
   },
 
   topLeft: {
@@ -430,6 +412,7 @@ const styles = StyleSheet.create({
     left: -1,
     borderTopWidth: 3,
     borderLeftWidth: 3,
+    borderTopLeftRadius: 16,
   },
 
   topRight: {
@@ -437,6 +420,7 @@ const styles = StyleSheet.create({
     right: -1,
     borderTopWidth: 3,
     borderRightWidth: 3,
+    borderTopRightRadius: 16,
   },
 
   bottomLeft: {
@@ -444,6 +428,7 @@ const styles = StyleSheet.create({
     left: -1,
     borderBottomWidth: 3,
     borderLeftWidth: 3,
+    borderBottomLeftRadius: 16,
   },
 
   bottomRight: {
@@ -451,16 +436,25 @@ const styles = StyleSheet.create({
     right: -1,
     borderBottomWidth: 3,
     borderRightWidth: 3,
+    borderBottomRightRadius: 16,
+  },
+
+  centerTarget: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: 'rgba(0,210,180,0.6)',
   },
 
   bottomShade: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(8,12,14,0.65)',
   },
 
   cameraHeader: {
     position: 'absolute',
-    top: 45,
+    top: 48,
     left: 18,
     right: 18,
     flexDirection: 'row',
@@ -469,19 +463,21 @@ const styles = StyleSheet.create({
   },
 
   closeButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(17,23,29,0.85)',
+    borderWidth: 1,
+    borderColor: '#243442',
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   closeText: {
     color: '#FFFFFF',
-    fontSize: 30,
+    fontSize: 28,
     fontWeight: '300',
-    lineHeight: 32,
+    lineHeight: 30,
   },
 
   cameraTitleContainer: {
@@ -490,88 +486,108 @@ const styles = StyleSheet.create({
 
   cameraTitle: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
 
   cameraSubtitle: {
-    color: 'rgba(255,255,255,0.75)',
-    fontSize: 11,
+    color: '#00D2B4',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.8,
     marginTop: 2,
   },
 
   headerSpacer: {
-    width: 42,
+    width: 44,
   },
 
   guideContainer: {
     position: 'absolute',
-    top: '23%',
-    left: 35,
-    right: 35,
+    top: '20%',
+    left: 30,
+    right: 30,
     alignItems: 'center',
   },
 
+  guidePill: {
+    backgroundColor: 'rgba(17,23,29,0.9)',
+    borderWidth: 1,
+    borderColor: '#00D2B4',
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 12,
+    marginBottom: 6,
+  },
+
   guideTitle: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
+    color: '#00D2B4',
+    fontSize: 13,
+    fontWeight: '800',
     textAlign: 'center',
   },
 
   guideText: {
-    color: 'rgba(255,255,255,0.82)',
+    color: 'rgba(255,255,255,0.85)',
     fontSize: 12,
-    lineHeight: 18,
+    lineHeight: 17,
     textAlign: 'center',
-    marginTop: 5,
   },
 
   captureControls: {
     position: 'absolute',
-    bottom: 38,
+    bottom: 40,
     left: 20,
     right: 20,
     alignItems: 'center',
   },
 
   captureHint: {
-    color: 'rgba(255,255,255,0.85)',
+    color: '#94A3B8',
     fontSize: 11,
+    fontWeight: '600',
     marginBottom: 16,
+    letterSpacing: 0.4,
   },
 
   captureOuter: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
+    width: 78,
+    height: 78,
+    borderRadius: 39,
     borderWidth: 4,
-    borderColor: '#FFFFFF',
+    borderColor: '#00D2B4',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#00D2B4',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 8,
   },
 
   capturePressed: {
-    opacity: 0.65,
+    opacity: 0.7,
   },
 
   captureInner: {
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#00D2B4',
   },
 
   captureLabel: {
-    color: '#FFFFFF',
+    color: '#F8FAFC',
     fontSize: 12,
-    fontWeight: '600',
-    marginTop: 10,
+    fontWeight: '700',
+    marginTop: 12,
+    letterSpacing: 0.3,
   },
 
   reviewScreen: {
     flex: 1,
-    backgroundColor: '#F5F9F8',
+    backgroundColor: '#080C0E',
   },
 
   reviewHeader: {
@@ -579,33 +595,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 22,
-    paddingTop: 20,
+    paddingTop: 24,
   },
 
   brand: {
-    color: '#176B6B',
-    fontSize: 15,
-    fontWeight: '700',
+    color: '#F8FAFC',
+    fontSize: 16,
+    fontWeight: '800',
   },
 
   section: {
-    color: '#87969A',
-    fontSize: 10,
+    color: '#00D2B4',
+    fontSize: 9,
     fontWeight: '700',
-    letterSpacing: 0.8,
-    marginTop: 3,
+    letterSpacing: 1.1,
+    marginTop: 2,
   },
 
   stepBadge: {
-    backgroundColor: '#E8F3F0',
-    borderRadius: 15,
+    backgroundColor: '#16282E',
+    borderWidth: 1,
+    borderColor: '#00D2B4',
+    borderRadius: 14,
     paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingVertical: 5,
   },
 
   stepText: {
-    color: '#176B6B',
-    fontSize: 12,
+    color: '#00D2B4',
+    fontSize: 11,
     fontWeight: '700',
   },
 
@@ -613,33 +631,35 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     paddingHorizontal: 22,
-    paddingTop: 28,
+    paddingTop: 24,
   },
 
   successCircle: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: '#DDEEE9',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#16282E',
+    borderWidth: 1,
+    borderColor: '#00D2B4',
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   successIcon: {
-    color: '#176B6B',
-    fontSize: 25,
-    fontWeight: '800',
+    color: '#00D2B4',
+    fontSize: 24,
+    fontWeight: '900',
   },
 
   reviewTitle: {
-    color: '#19323C',
-    fontSize: 25,
-    fontWeight: '700',
-    marginTop: 13,
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: '800',
+    marginTop: 12,
   },
 
   reviewSubtitle: {
-    color: '#718187',
+    color: '#94A3B8',
     fontSize: 12,
     textAlign: 'center',
     lineHeight: 18,
@@ -650,10 +670,12 @@ const styles = StyleSheet.create({
   imageContainer: {
     width: '100%',
     height: 230,
-    borderRadius: 18,
+    borderRadius: 20,
     overflow: 'hidden',
-    backgroundColor: '#DCE7E5',
-    marginTop: 22,
+    backgroundColor: '#11171D',
+    borderWidth: 1,
+    borderColor: '#1E2B37',
+    marginTop: 20,
   },
 
   capturedImage: {
@@ -663,79 +685,87 @@ const styles = StyleSheet.create({
 
   reviewNotice: {
     width: '100%',
-    backgroundColor: '#EEF7F5',
-    borderRadius: 13,
+    backgroundColor: '#0F1A22',
+    borderWidth: 1,
+    borderColor: '#17303E',
+    borderRadius: 14,
     padding: 14,
     marginTop: 14,
   },
 
   noticeTitle: {
-    color: '#31565B',
-    fontSize: 13,
+    color: '#38BDF8',
+    fontSize: 12,
     fontWeight: '700',
   },
 
   noticeText: {
-    color: '#718187',
+    color: '#94A3B8',
     fontSize: 11,
-    lineHeight: 17,
-    marginTop: 4,
+    lineHeight: 16,
+    marginTop: 3,
   },
 
   reviewActions: {
     flexDirection: 'row',
-    gap: 11,
+    gap: 12,
     paddingHorizontal: 22,
-    paddingBottom: 25,
+    paddingBottom: 28,
   },
 
   retakeButton: {
     flex: 1,
-    height: 53,
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
+    height: 54,
+    borderRadius: 14,
+    backgroundColor: '#11171D',
     borderWidth: 1,
-    borderColor: '#176B6B',
+    borderColor: '#243442',
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
   },
 
   retakeIcon: {
-    color: '#176B6B',
-    fontSize: 19,
-    marginRight: 7,
+    color: '#94A3B8',
+    fontSize: 18,
+    marginRight: 6,
   },
 
   retakeText: {
-    color: '#176B6B',
-    fontSize: 13,
+    color: '#94A3B8',
+    fontSize: 14,
     fontWeight: '700',
   },
 
   useButton: {
-    flex: 1.35,
-    height: 53,
-    borderRadius: 12,
-    backgroundColor: '#176B6B',
+    flex: 1.5,
+    height: 54,
+    borderRadius: 14,
+    backgroundColor: '#00D2B4',
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
+    shadowColor: '#00D2B4',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 6,
   },
 
   useText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
+    color: '#080C0E',
+    fontSize: 14,
+    fontWeight: '800',
   },
 
   useArrow: {
-    color: '#FFFFFF',
-    fontSize: 19,
-    marginLeft: 8,
+    color: '#080C0E',
+    fontSize: 18,
+    marginLeft: 6,
+    fontWeight: '800',
   },
 
   buttonPressed: {
-    opacity: 0.7,
+    opacity: 0.75,
   },
 });

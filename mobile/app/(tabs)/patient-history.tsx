@@ -59,32 +59,14 @@ export default function PatientHistoryScreen() {
     });
   };
 
-  const getStatusText = (
-    status?: PatientRecord['qualityStatus']
-  ) => {
+  const getStatusText = (status?: PatientRecord['qualityStatus']) => {
     if (status === 'passed') {
-      return 'Quality passed';
+      return 'Quality Passed ✓';
     }
-
     if (status === 'failed') {
-      return 'Quality failed';
+      return 'Quality Failed ✗';
     }
-
-    return 'Pending quality check';
-  };
-
-  const getStatusStyle = (
-    status?: PatientRecord['qualityStatus']
-  ) => {
-    if (status === 'passed') {
-      return styles.statusPassed;
-    }
-
-    if (status === 'failed') {
-      return styles.statusFailed;
-    }
-
-    return styles.statusPending;
+    return 'Pending Evaluation';
   };
 
   return (
@@ -94,68 +76,51 @@ export default function PatientHistoryScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.brand}>OralCare</Text>
-            <Text style={styles.section}>
-              PATIENT HISTORY
-            </Text>
+            <Text style={styles.brand}>OralCare AI</Text>
+            <Text style={styles.section}>OFFLINE ARCHIVE</Text>
           </View>
 
           <Pressable
-            onPress={() => router.back()}
+            onPress={() => router.push('/(tabs)')}
             style={styles.backButton}
           >
-            <Text style={styles.backText}>Back</Text>
+            <Text style={styles.backText}>+ New Patient</Text>
           </Pressable>
         </View>
 
         {/* Heading */}
         <View style={styles.heading}>
-          <Text style={styles.title}>
-            Patient history
-          </Text>
-
+          <Text style={styles.title}>Patient Archive</Text>
           <Text style={styles.subtitle}>
-            Records stored locally on this device for offline use.
+            Cached local telemetry records for offline clinic operations.
           </Text>
         </View>
 
-        {/* Loading */}
+        {/* Loading state */}
         {loading ? (
           <View style={styles.centerState}>
-            <ActivityIndicator
-              size="large"
-              color="#176B6B"
-            />
-
-            <Text style={styles.stateText}>
-              Loading patient history...
-            </Text>
+            <ActivityIndicator size="large" color="#00D2B4" />
+            <Text style={styles.stateText}>Accessing local secure vault...</Text>
           </View>
         ) : patients.length === 0 ? (
 
           /* Empty state */
           <View style={styles.emptyCard}>
             <View style={styles.emptyIcon}>
-              <Text style={styles.emptyIconText}>+</Text>
+              <Text style={styles.emptyIconText}>🗂️</Text>
             </View>
 
-            <Text style={styles.emptyTitle}>
-              No patient records yet
-            </Text>
+            <Text style={styles.emptyTitle}>No Clinical Records Found</Text>
 
             <Text style={styles.emptyText}>
-              Registered patients will appear here after you
-              start an examination.
+              Patients registered during examinations will automatically synchronize to this local storage.
             </Text>
 
             <Pressable
-              onPress={() => router.push('/registration')}
+              onPress={() => router.push('/(tabs)')}
               style={styles.primaryButton}
             >
-              <Text style={styles.primaryButtonText}>
-                Register patient
-              </Text>
-
+              <Text style={styles.primaryButtonText}>Register First Patient</Text>
               <Text style={styles.arrow}>→</Text>
             </Pressable>
           </View>
@@ -170,116 +135,85 @@ export default function PatientHistoryScreen() {
               <RefreshControl
                 refreshing={refreshing}
                 onRefresh={handleRefresh}
-                tintColor="#176B6B"
+                tintColor="#00D2B4"
               />
             }
           >
             <View style={styles.countRow}>
               <Text style={styles.countText}>
-                {patients.length}{' '}
-                {patients.length === 1
-                  ? 'patient'
-                  : 'patients'}
+                {patients.length} {patients.length === 1 ? 'RECORD' : 'RECORDS'} CACHED
               </Text>
-
-              <Text style={styles.offlineText}>
-                Offline records
-              </Text>
+              <Text style={styles.offlineText}>ENCRYPTED LOCAL</Text>
             </View>
 
             {patients.map((patient) => (
-              <View
-                key={patient.id}
-                style={styles.patientCard}
-              >
+              <View key={patient.id} style={styles.patientCard}>
 
-                {/* Patient heading */}
+                {/* Top row */}
                 <View style={styles.patientTop}>
                   <View style={styles.patientIcon}>
                     <Text style={styles.patientIconText}>
                       {patient.patientName
-                        ? patient.patientName
-                            .charAt(0)
-                            .toUpperCase()
+                        ? patient.patientName.charAt(0).toUpperCase()
                         : 'P'}
                     </Text>
                   </View>
 
                   <View style={styles.patientInfo}>
-                    <Text style={styles.patientName}>
-                      {patient.patientName}
-                    </Text>
-
-                    <Text style={styles.patientId}>
-                      ID: {patient.id}
-                    </Text>
+                    <Text style={styles.patientName}>{patient.patientName}</Text>
+                    <Text style={styles.patientId}>ID: {patient.id}</Text>
                   </View>
                 </View>
 
                 <View style={styles.divider} />
 
-                {/* Patient details */}
+                {/* Details */}
                 <View style={styles.detailsRow}>
                   <View style={styles.detail}>
-                    <Text style={styles.detailLabel}>
-                      AGE
-                    </Text>
-
-                    <Text style={styles.detailValue}>
-                      {patient.age}
-                    </Text>
+                    <Text style={styles.detailLabel}>AGE</Text>
+                    <Text style={styles.detailValue}>{patient.age} yrs</Text>
                   </View>
 
                   <View style={styles.detail}>
-                    <Text style={styles.detailLabel}>
-                      PHONE
-                    </Text>
-
-                    <Text style={styles.detailValue}>
-                      {patient.phone || 'Not provided'}
-                    </Text>
+                    <Text style={styles.detailLabel}>PHONE</Text>
+                    <Text style={styles.detailValue}>{patient.phone || '—'}</Text>
                   </View>
                 </View>
 
                 <View style={styles.createdRow}>
-                  <Text style={styles.detailLabel}>
-                    CREATED
-                  </Text>
-
-                  <Text style={styles.createdValue}>
-                    {formatDate(patient.createdAt)}
-                  </Text>
+                  <Text style={styles.detailLabel}>RECORD TIMESTAMP</Text>
+                  <Text style={styles.createdValue}>{formatDate(patient.createdAt)}</Text>
                 </View>
 
-                {/* Quality status */}
+                {/* Status Badge */}
                 <View style={styles.statusRow}>
                   <View
                     style={[
                       styles.statusBadge,
-                      getStatusStyle(
-                        patient.qualityStatus
-                      ),
+                      patient.qualityStatus === 'passed' && styles.statusPassed,
+                      patient.qualityStatus === 'failed' && styles.statusFailed,
+                      patient.qualityStatus !== 'passed' && patient.qualityStatus !== 'failed' && styles.statusPending,
                     ]}
                   >
-                    <Text style={styles.statusText}>
-                      {getStatusText(
-                        patient.qualityStatus
-                      )}
+                    <Text
+                      style={[
+                        styles.statusText,
+                        patient.qualityStatus === 'passed' && { color: '#00D2B4' },
+                        patient.qualityStatus === 'failed' && { color: '#F43F5E' },
+                        patient.qualityStatus !== 'passed' && patient.qualityStatus !== 'failed' && { color: '#94A3B8' },
+                      ]}
+                    >
+                      {getStatusText(patient.qualityStatus)}
                     </Text>
                   </View>
 
                   {patient.imageUri ? (
-                    <Text style={styles.imageSaved}>
-                      Image saved
-                    </Text>
+                    <Text style={styles.imageSaved}>📸 Image Cached</Text>
                   ) : null}
                 </View>
 
-                {/* Quality reason */}
                 {patient.qualityReason ? (
-                  <Text style={styles.reason}>
-                    {patient.qualityReason}
-                  </Text>
+                  <Text style={styles.reason}>Note: {patient.qualityReason}</Text>
                 ) : null}
 
               </View>
@@ -287,9 +221,8 @@ export default function PatientHistoryScreen() {
           </ScrollView>
         )}
 
-        {/* Footer */}
         <Text style={styles.footer}>
-          Patient records remain on this device for offline use.
+          🔒 Telemetry records stored locally on flash storage with AES integrity.
         </Text>
 
       </View>
@@ -300,13 +233,13 @@ export default function PatientHistoryScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F5F9F8',
+    backgroundColor: '#080C0E',
   },
 
   container: {
     flex: 1,
     paddingHorizontal: 22,
-    paddingTop: 22,
+    paddingTop: 24,
   },
 
   header: {
@@ -316,50 +249,53 @@ const styles = StyleSheet.create({
   },
 
   brand: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#176B6B',
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#F8FAFC',
     letterSpacing: 0.3,
   },
 
   section: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
-    color: '#87969A',
-    letterSpacing: 0.8,
-    marginTop: 3,
+    color: '#00D2B4',
+    letterSpacing: 1.1,
+    marginTop: 2,
   },
 
   backButton: {
-    backgroundColor: '#E8F3F0',
-    paddingHorizontal: 13,
-    paddingVertical: 8,
-    borderRadius: 10,
+    backgroundColor: '#16282E',
+    borderWidth: 1,
+    borderColor: '#00D2B4',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
   },
 
   backText: {
-    color: '#176B6B',
-    fontSize: 12,
-    fontWeight: '700',
+    color: '#00D2B4',
+    fontSize: 11,
+    fontWeight: '800',
   },
 
   heading: {
-    marginTop: 27,
-    marginBottom: 18,
+    marginTop: 24,
+    marginBottom: 16,
   },
 
   title: {
     fontSize: 28,
-    lineHeight: 35,
-    fontWeight: '700',
-    color: '#19323C',
+    lineHeight: 34,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.4,
   },
 
   subtitle: {
     fontSize: 13,
-    lineHeight: 20,
-    color: '#60737A',
-    marginTop: 7,
+    lineHeight: 19,
+    color: '#94A3B8',
+    marginTop: 6,
   },
 
   centerState: {
@@ -369,102 +305,108 @@ const styles = StyleSheet.create({
   },
 
   stateText: {
-    color: '#718187',
-    fontSize: 12,
-    marginTop: 12,
+    color: '#94A3B8',
+    fontSize: 13,
+    marginTop: 14,
+    fontWeight: '600',
   },
 
   emptyCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#11171D',
     borderWidth: 1,
-    borderColor: '#E1EAE8',
-    borderRadius: 17,
-    padding: 24,
+    borderColor: '#1E2B37',
+    borderRadius: 20,
+    padding: 26,
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 14,
   },
 
   emptyIcon: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: '#E4F1EE',
+    width: 60,
+    height: 60,
+    borderRadius: 20,
+    backgroundColor: '#16282E',
+    borderWidth: 1,
+    borderColor: '#00D2B4',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 15,
+    marginBottom: 16,
   },
 
   emptyIconText: {
-    color: '#176B6B',
-    fontSize: 28,
+    fontSize: 26,
   },
 
   emptyTitle: {
-    color: '#19323C',
-    fontSize: 17,
-    fontWeight: '700',
+    color: '#F8FAFC',
+    fontSize: 18,
+    fontWeight: '800',
     textAlign: 'center',
   },
 
   emptyText: {
-    color: '#718187',
+    color: '#94A3B8',
     fontSize: 12,
     lineHeight: 18,
     textAlign: 'center',
-    marginTop: 7,
+    marginTop: 8,
     maxWidth: 300,
   },
 
   primaryButton: {
-    minHeight: 51,
-    borderRadius: 12,
-    backgroundColor: '#176B6B',
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: '#00D2B4',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 20,
-    marginTop: 18,
+    paddingHorizontal: 22,
+    marginTop: 20,
   },
 
   primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '700',
+    color: '#080C0E',
+    fontSize: 14,
+    fontWeight: '800',
   },
 
   arrow: {
-    color: '#FFFFFF',
-    fontSize: 19,
+    color: '#080C0E',
+    fontSize: 18,
     marginLeft: 8,
+    fontWeight: '800',
   },
 
   listContent: {
-    paddingBottom: 20,
+    paddingBottom: 24,
   },
 
   countRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    marginBottom: 12,
   },
 
   countText: {
-    color: '#31565B',
-    fontSize: 12,
-    fontWeight: '700',
+    color: '#00D2B4',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.8,
   },
 
   offlineText: {
-    color: '#87969A',
-    fontSize: 10,
+    color: '#64748B',
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.8,
   },
 
   patientCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#11171D',
     borderWidth: 1,
-    borderColor: '#E1EAE8',
-    borderRadius: 16,
+    borderColor: '#1E2B37',
+    borderRadius: 18,
     padding: 16,
     marginBottom: 12,
   },
@@ -475,19 +417,19 @@ const styles = StyleSheet.create({
   },
 
   patientIcon: {
-    width: 43,
-    height: 43,
-    borderRadius: 22,
-    backgroundColor: '#E4F1EE',
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#00D2B4',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 11,
+    marginRight: 12,
   },
 
   patientIconText: {
-    color: '#176B6B',
-    fontSize: 16,
-    fontWeight: '800',
+    color: '#080C0E',
+    fontSize: 18,
+    fontWeight: '900',
   },
 
   patientInfo: {
@@ -495,26 +437,26 @@ const styles = StyleSheet.create({
   },
 
   patientName: {
-    color: '#19323C',
-    fontSize: 15,
-    fontWeight: '700',
+    color: '#F8FAFC',
+    fontSize: 16,
+    fontWeight: '800',
   },
 
   patientId: {
-    color: '#87969A',
+    color: '#94A3B8',
     fontSize: 10,
-    marginTop: 3,
+    marginTop: 2,
   },
 
   divider: {
     height: 1,
-    backgroundColor: '#EDF2F1',
-    marginVertical: 13,
+    backgroundColor: '#1E2B37',
+    marginVertical: 12,
   },
 
   detailsRow: {
     flexDirection: 'row',
-    marginBottom: 12,
+    marginBottom: 10,
   },
 
   detail: {
@@ -522,33 +464,35 @@ const styles = StyleSheet.create({
   },
 
   detailLabel: {
-    color: '#87969A',
-    fontSize: 8,
+    color: '#64748B',
+    fontSize: 9,
     fontWeight: '700',
     letterSpacing: 0.7,
   },
 
   detailValue: {
-    color: '#40565E',
-    fontSize: 11,
-    marginTop: 3,
+    color: '#E2E8F0',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
   },
 
   createdRow: {
-    marginBottom: 2,
+    marginBottom: 10,
   },
 
   createdValue: {
-    color: '#40565E',
-    fontSize: 11,
-    marginTop: 3,
+    color: '#E2E8F0',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
   },
 
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 13,
+    marginTop: 6,
   },
 
   statusBadge: {
@@ -558,42 +502,48 @@ const styles = StyleSheet.create({
   },
 
   statusPassed: {
-    backgroundColor: '#E1F2EA',
+    backgroundColor: '#0A1C18',
+    borderWidth: 1,
+    borderColor: '#00D2B4',
   },
 
   statusFailed: {
-    backgroundColor: '#F9E4E0',
+    backgroundColor: '#210B10',
+    borderWidth: 1,
+    borderColor: '#F43F5E',
   },
 
   statusPending: {
-    backgroundColor: '#EEF1F0',
+    backgroundColor: '#161F28',
+    borderWidth: 1,
+    borderColor: '#334155',
   },
 
   statusText: {
-    color: '#40565E',
-    fontSize: 9,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: '800',
   },
 
   imageSaved: {
-    color: '#176B6B',
-    fontSize: 9,
+    color: '#38BDF8',
+    fontSize: 10,
     fontWeight: '700',
   },
 
   reason: {
-    color: '#718187',
-    fontSize: 10,
-    lineHeight: 15,
-    marginTop: 9,
+    color: '#F43F5E',
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 8,
+    fontWeight: '500',
   },
 
   footer: {
-    color: '#87969A',
+    color: '#64748B',
     fontSize: 9,
     lineHeight: 14,
     textAlign: 'center',
-    paddingHorizontal: 18,
-    paddingVertical: 13,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
 });

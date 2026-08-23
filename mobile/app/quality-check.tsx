@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Pressable,
   SafeAreaView,
@@ -11,40 +10,44 @@ import {
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { getActiveBaseUrl, getOrFetchToken } from '@/hooks/use-auth';
 import { updatePatientRecord } from '../storage/patientStorage';
 
-type QualityScores = {
-  blur_score: number;
-  brightness_score: number;
-  glare_area_pct: number;
-  framing_confidence: number;
-};
-
-type QualityApiResponse = {
-  pass: boolean;
-  reason?: string | null;
-  all_failed_reasons: string[];
-  scores: QualityScores;
-  timestamp: string;
-  module_version: string;
-};
-
-type QualityResult = {
+type QualityAudit = {
   passed: boolean;
-  reason: string;
-  failedReasons: string[];
-  scores?: QualityScores;
+  reason: string | null;
+  all_failed_reasons: string[];
+  blur_score: number | null;
+  brightness_score: number | null;
+  glare_area_pct: number | null;
+  framing_confidence: number | null;
+  module_version: string | null;
 };
 
-// Member B backend running on your laptop
-const QUALITY_API_URL =
-  'http://10.64.235.234:8000/check-image-quality';
+type RiskAssessment = {
+  risk_category: string | null;
+  confidence: number | null;
+  cannot_assess: boolean;
+  cannot_assess_reason: string | null;
+  heatmap_url: string | null;
+  model_version: string | null;
+};
+
+type CaseOut = {
+  id: string;
+  status: string;
+  quality_audit: QualityAudit | null;
+  risk_assessment: RiskAssessment | null;
+};
+
+type Phase = 'idle' | 'uploading' | 'quality' | 'model' | 'done' | 'offline_saved' | 'error';
 
 export default function QualityCheckScreen() {
   const router = useRouter();
 
-  const [checking, setChecking] = useState(false);
-  const [result, setResult] = useState<QualityResult | null>(null);
+  const [phase, setPhase] = useState<Phase>('idle');
+  const [caseResult, setCaseResult] = useState<CaseOut | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const params = useLocalSearchParams<{
     patientId?: string;
@@ -54,770 +57,448 @@ export default function QualityCheckScreen() {
     imageUri?: string;
   }>();
 
-  const imageUri =
-    typeof params.imageUri === 'string'
-      ? params.imageUri
-      : '';
+  const imageUri = typeof params.imageUri === 'string' ? params.imageUri : '';
+  const patientId = typeof params.patientId === 'string' ? params.patientId : '';
+  const patientName = typeof params.patientName === 'string' ? params.patientName : 'Patient';
 
-  const patientId =
-    typeof params.patientId === 'string'
-      ? params.patientId
-      : '';
-
-  const patientName =
-    typeof params.patientName === 'string'
-      ? params.patientName
-      : 'Patient';
-
-  const runQualityCheck = async (): Promise<QualityResult> => {
-    if (!imageUri) {
-      throw new Error('No image URI was provided.');
+  useEffect(() => {
+    if (imageUri && patientId) {
+      runFullPipeline();
     }
+  }, []);
 
-    const formData = new FormData();
-
-    formData.append(
-      'file',
-      {
-        uri: imageUri,
-        name: 'oral-examination.jpg',
-        type: 'image/jpeg',
-      } as any
-    );
-
-    const response = await fetch(QUALITY_API_URL, {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.ok) {
-      throw new Error(
-        `Quality service returned HTTP ${response.status}`
-      );
-    }
-
-    const data =
-      (await response.json()) as QualityApiResponse;
-
-    const failedReasons =
-      Array.isArray(data.all_failed_reasons)
-        ? data.all_failed_reasons
-        : [];
-
-    let reason = '';
-
-    if (data.pass) {
-      reason =
-        'Image quality is acceptable for the next stage.';
-    } else if (data.reason) {
-      reason = formatReason(data.reason);
-    } else if (failedReasons.length > 0) {
-      reason = failedReasons
-        .map(formatReason)
-        .join(', ');
-    } else {
-      reason =
-        'The image did not meet the required quality checks.';
-    }
-
-    return {
-      passed: data.pass,
-      reason,
-      failedReasons,
-      scores: data.scores,
-    };
-  };
-
-  const checkImage = async () => {
-    if (!imageUri) {
-      Alert.alert(
-        'Image missing',
-        'No captured image was provided.'
-      );
+  const runFullPipeline = async () => {
+    if (!imageUri || !patientId) {
+      setErrorMsg('Missing image or patient ID.');
+      setPhase('error');
       return;
     }
 
     try {
-      setChecking(true);
-      setResult(null);
+      setPhase('uploading');
+      const token = await getOrFetchToken();
+      const baseUrl = getActiveBaseUrl();
 
-      const qualityResult = await runQualityCheck();
+      const formData = new FormData();
+      formData.append('patient_id', patientId);
+      formData.append('file', {
+        uri: imageUri,
+        name: 'oral-examination.jpg',
+        type: 'image/jpeg',
+      } as any);
 
-      setResult(qualityResult);
+      setPhase('quality');
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3500);
+
+      const response = await fetch(`${baseUrl}/cases`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        // If patient was created locally and doesn't exist on backend, try creating patient first
+        if (response.status === 404 && patientId.startsWith('local-')) {
+          const createPat = await fetch(`${baseUrl}/patients`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              name: patientName,
+              age: parseInt(params.age || '40', 10),
+              phone: params.phone || undefined,
+            }),
+          });
+          if (createPat.ok) {
+            const patData = await createPat.json();
+            // Retry upload with server patient_id
+            const retryFormData = new FormData();
+            retryFormData.append('patient_id', patData.id);
+            retryFormData.append('file', {
+              uri: imageUri,
+              name: 'oral-examination.jpg',
+              type: 'image/jpeg',
+            } as any);
+
+            const retryRes = await fetch(`${baseUrl}/cases`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}` },
+              body: retryFormData,
+            });
+
+            if (retryRes.ok) {
+              const retryData: CaseOut = await retryRes.json();
+              setCaseResult(retryData);
+              if (patientId) {
+                await updatePatientRecord(patientId, {
+                  imageUri,
+                  qualityStatus: retryData.quality_audit?.passed ? 'passed' : 'failed',
+                  qualityReason: retryData.quality_audit?.reason ?? undefined,
+                }).catch(() => {});
+              }
+              setPhase('done');
+              return;
+            }
+          }
+        }
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err?.detail ?? `Server error ${response.status}`);
+      }
+
+      setPhase('model');
+      const data: CaseOut = await response.json();
+      setCaseResult(data);
 
       if (patientId) {
         await updatePatientRecord(patientId, {
           imageUri,
-          qualityStatus: qualityResult.passed
-            ? 'passed'
-            : 'failed',
-          qualityReason: qualityResult.reason,
-        });
+          qualityStatus: data.quality_audit?.passed ? 'passed' : 'failed',
+          qualityReason: data.quality_audit?.reason ?? undefined,
+        }).catch(() => {});
       }
-    } catch (error) {
-      console.error('Quality check error:', error);
 
-      Alert.alert(
-        'Quality check unavailable',
-        'The quality-check service could not be reached. Make sure the backend is running on port 8000 and that your phone and laptop are connected to the same Wi-Fi network.'
-      );
-    } finally {
-      setChecking(false);
+      setPhase('done');
+    } catch (error: any) {
+      console.log('Pipeline transitioning to offline mode:', error?.message || error);
+      // If offline or network timeout, save image locally and allow proceeding
+      if (patientId) {
+        try {
+          await updatePatientRecord(patientId, {
+            imageUri,
+            qualityStatus: 'pending',
+            qualityReason: 'Stored locally (Offline sync ready)',
+          });
+        } catch (storageErr) {
+          console.error('Local storage update error:', storageErr);
+        }
+      }
+      setPhase('offline_saved');
     }
   };
 
-  const retake = () => {
-    router.back();
-  };
-
-  const continueAfterQuality = () => {
-    if (!result?.passed) {
-      return;
-    }
-
-    Alert.alert(
-      'Quality check passed',
-      'The image has passed the basic quality check and is ready for the next stage.',
-      [
-        {
-          text: 'Done',
-          onPress: () => router.back(),
-        },
-      ]
-    );
+  const goToResults = () => {
+    if (!caseResult) return;
+    router.push({
+      pathname: '/results',
+      params: {
+        caseId: caseResult.id,
+        patientName,
+        status: caseResult.status,
+        qualityPassed: caseResult.quality_audit?.passed ? 'true' : 'false',
+        qualityReason: caseResult.quality_audit?.reason ?? '',
+        qualityAllFailed: JSON.stringify(caseResult.quality_audit?.all_failed_reasons ?? []),
+        blurScore: String(caseResult.quality_audit?.blur_score ?? ''),
+        brightnessScore: String(caseResult.quality_audit?.brightness_score ?? ''),
+        glareAreaPct: String(caseResult.quality_audit?.glare_area_pct ?? ''),
+        framingConfidence: String(caseResult.quality_audit?.framing_confidence ?? ''),
+        riskCategory: caseResult.risk_assessment?.risk_category ?? '',
+        confidence: String(caseResult.risk_assessment?.confidence ?? ''),
+        cannotAssess: caseResult.risk_assessment?.cannot_assess ? 'true' : 'false',
+        cannotAssessReason: caseResult.risk_assessment?.cannot_assess_reason ?? '',
+        modelVersion: caseResult.risk_assessment?.model_version ?? '',
+        imageUri,
+      },
+    });
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView
-        contentContainerStyle={styles.container}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.brand}>OralCare</Text>
-            <Text style={styles.section}>
-              IMAGE QUALITY CHECK
-            </Text>
+            <Text style={styles.brand}>OralCare AI</Text>
+            <Text style={styles.section}>AI TELEMETRY PIPELINE</Text>
           </View>
-
           <View style={styles.stepBadge}>
-            <Text style={styles.stepText}>4 / 4</Text>
+            <Text style={styles.stepText}>Step 4 of 4</Text>
           </View>
         </View>
 
-        {/* Patient */}
-        <View style={styles.patientCard}>
-          <View style={styles.patientIcon}>
-            <Text style={styles.patientIconText}>P</Text>
-          </View>
-
-          <View style={styles.patientInfo}>
-            <Text style={styles.patientLabel}>
-              CURRENT PATIENT
-            </Text>
-
-            <Text style={styles.patientName}>
-              {patientName}
-            </Text>
-
-            <Text style={styles.patientId}>
-              ID: {patientId || 'Not assigned'}
-            </Text>
-          </View>
-        </View>
-
-        {/* Heading */}
-        <View style={styles.heading}>
-          <Text style={styles.title}>
-            Check image quality
-          </Text>
-
-          <Text style={styles.subtitle}>
-            The image must pass the basic quality checks before
-            it can continue to the risk-classification stage.
-          </Text>
-        </View>
-
-        {/* Image */}
-        <View style={styles.imageCard}>
-          {imageUri ? (
-            <Image
-              source={{ uri: imageUri }}
-              style={styles.image}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={styles.noImage}>
-              <Text style={styles.noImageIcon}>!</Text>
-
-              <Text style={styles.noImageText}>
-                No image available
-              </Text>
+        {/* Image preview */}
+        {imageUri ? (
+          <View style={styles.imageContainer}>
+            <Image source={{ uri: imageUri }} style={styles.image} resizeMode="cover" />
+            <View style={styles.imageOverlayBadge}>
+              <Text style={styles.imageOverlayText}>RAW FRAME</Text>
             </View>
+          </View>
+        ) : null}
+
+        {/* Status card */}
+        <View style={styles.statusCard}>
+          {phase === 'idle' && (
+            <StatusRow icon="⏳" label="Initializing analysis sequence..." color="#94A3B8" />
+          )}
+
+          {(phase === 'uploading' || phase === 'quality' || phase === 'model') && (
+            <>
+              <View style={styles.spinnerRow}>
+                <ActivityIndicator color="#00D2B4" size="large" />
+              </View>
+              <Text style={styles.phaseTitle}>
+                {phase === 'uploading' && 'Dispatching Optical Data…'}
+                {phase === 'quality' && 'OpenCV Quality Matrix Check…'}
+                {phase === 'model' && 'MobileNetV2 Neural Risk Inference…'}
+              </Text>
+              <Text style={styles.phaseSubtitle}>
+                {phase === 'uploading' && 'Secure transmission to local inference node'}
+                {phase === 'quality' && 'Evaluating Laplacian variance, glare, exposure & framing'}
+                {phase === 'model' && 'Classifying mucosal lesions against validated dataset'}
+              </Text>
+            </>
+          )}
+
+          {phase === 'done' && caseResult && (
+            <>
+              <StatusRow
+                icon={caseResult.quality_audit?.passed ? '✓' : '✗'}
+                label={
+                  caseResult.quality_audit?.passed
+                    ? 'Optical quality verified ✓'
+                    : `Quality check failed: ${caseResult.quality_audit?.reason ?? 'Artifacts detected'}`
+                }
+                color={caseResult.quality_audit?.passed ? '#00D2B4' : '#F43F5E'}
+              />
+
+              {caseResult.risk_assessment ? (
+                <StatusRow
+                  icon={riskIcon(caseResult.risk_assessment.risk_category)}
+                  label={
+                    caseResult.risk_assessment.cannot_assess
+                      ? 'Inconclusive assessment — clinical retake advised'
+                      : `Risk Assessment: ${formatRisk(caseResult.risk_assessment.risk_category)}`
+                  }
+                  color={riskColor(caseResult.risk_assessment.risk_category)}
+                />
+              ) : (
+                <StatusRow icon="⚠️" label="Quality threshold unmet — inference bypassed" color="#F59E0B" />
+              )}
+
+              <Pressable style={styles.viewBtn} onPress={goToResults}>
+                <Text style={styles.viewBtnText}>View Clinical Assessment →</Text>
+              </Pressable>
+            </>
+          )}
+
+          {phase === 'offline_saved' && (
+            <>
+              <StatusRow icon="🛡️" label="Frame Secured in Offline Vault" color="#00D2B4" />
+              <Text style={styles.offlineText}>
+                Backend server is currently offline or on a different network. The capture has been saved to your local device history and is ready for cloud synchronization once reconnected.
+              </Text>
+              <Pressable style={styles.viewBtn} onPress={() => router.push('/(tabs)/patient-history')}>
+                <Text style={styles.viewBtnText}>View in Patient History →</Text>
+              </Pressable>
+              <Pressable style={styles.retryBtn} onPress={runFullPipeline}>
+                <Text style={styles.retryBtnText}>Retry Server Connection</Text>
+              </Pressable>
+            </>
+          )}
+
+          {phase === 'error' && (
+            <>
+              <StatusRow icon="✗" label={errorMsg ?? 'Communication error'} color="#F43F5E" />
+              <Pressable style={styles.retryBtn} onPress={runFullPipeline}>
+                <Text style={styles.retryBtnText}>Retry Pipeline</Text>
+              </Pressable>
+              <Pressable style={styles.backBtn} onPress={() => router.back()}>
+                <Text style={styles.backBtnText}>← Retake Optical Frame</Text>
+              </Pressable>
+            </>
           )}
         </View>
 
-        {/* Checks */}
-        <View style={styles.checkCard}>
-          <Text style={styles.checkTitle}>
-            Quality checks
-          </Text>
-
-          <QualityRow
-            label="Blur"
-            description="Image should be reasonably sharp."
+        {/* Pipeline steps legend */}
+        <View style={styles.legend}>
+          <LegendStep
+            number="1"
+            label="Quality Matrix"
+            done={phase === 'model' || phase === 'done' || phase === 'offline_saved'}
+            active={phase === 'quality'}
           />
-
-          <QualityRow
-            label="Lighting"
-            description="The examination area should be adequately illuminated."
+          <View style={[styles.legendLine, (phase === 'model' || phase === 'done' || phase === 'offline_saved') && styles.legendLineActive]} />
+          <LegendStep
+            number="2"
+            label="Neural Model"
+            done={phase === 'done'}
+            active={phase === 'model'}
           />
-
-          <QualityRow
-            label="Glare"
-            description="Strong reflections should not obscure the tissue."
-          />
-
-          <QualityRow
-            label="Framing"
-            description="The buccal cavity should be properly positioned."
-            last
+          <View style={[styles.legendLine, phase === 'done' && styles.legendLineActive]} />
+          <LegendStep
+            number="3"
+            label="Diagnostics"
+            done={false}
+            active={phase === 'done'}
           />
         </View>
-
-        {/* Run check */}
-        {!result && (
-          <Pressable
-            onPress={checkImage}
-            disabled={checking}
-            style={({ pressed }) => [
-              styles.primaryButton,
-              pressed && styles.buttonPressed,
-              checking && styles.disabledButton,
-            ]}
-          >
-            {checking ? (
-              <>
-                <ActivityIndicator
-                  size="small"
-                  color="#FFFFFF"
-                />
-
-                <Text style={styles.primaryButtonText}>
-                  Checking image...
-                </Text>
-              </>
-            ) : (
-              <>
-                <Text style={styles.primaryButtonText}>
-                  Run quality check
-                </Text>
-
-                <Text style={styles.arrow}>→</Text>
-              </>
-            )}
-          </Pressable>
-        )}
-
-        {/* Result */}
-        {result && (
-          <View
-            style={[
-              styles.resultCard,
-              result.passed
-                ? styles.resultPassed
-                : styles.resultFailed,
-            ]}
-          >
-            <View
-              style={[
-                styles.resultIcon,
-                result.passed
-                  ? styles.resultIconPassed
-                  : styles.resultIconFailed,
-              ]}
-            >
-              <Text style={styles.resultIconText}>
-                {result.passed ? '✓' : '!'}
-              </Text>
-            </View>
-
-            <View style={styles.resultContent}>
-              <Text style={styles.resultTitle}>
-                {result.passed
-                  ? 'Quality check passed'
-                  : 'Quality check failed'}
-              </Text>
-
-              <Text style={styles.resultReason}>
-                {result.reason}
-              </Text>
-
-              {result.scores && (
-                <View style={styles.scoresContainer}>
-                  <Text style={styles.scoreText}>
-                    Blur: {result.scores.blur_score.toFixed(1)}
-                  </Text>
-
-                  <Text style={styles.scoreText}>
-                    Brightness:{' '}
-                    {result.scores.brightness_score.toFixed(1)}
-                  </Text>
-
-                  <Text style={styles.scoreText}>
-                    Glare:{' '}
-                    {result.scores.glare_area_pct.toFixed(1)}%
-                  </Text>
-
-                  <Text style={styles.scoreText}>
-                    Framing:{' '}
-                    {result.scores.framing_confidence.toFixed(2)}
-                  </Text>
-                </View>
-              )}
-            </View>
-          </View>
-        )}
-
-        {/* Actions */}
-        {result && (
-          <View style={styles.actionArea}>
-            {!result.passed && (
-              <Pressable
-                onPress={retake}
-                style={({ pressed }) => [
-                  styles.secondaryButton,
-                  pressed && styles.buttonPressed,
-                ]}
-              >
-                <Text style={styles.secondaryButtonText}>
-                  Retake image
-                </Text>
-              </Pressable>
-            )}
-
-            {result.passed && (
-              <Pressable
-                onPress={continueAfterQuality}
-                style={({ pressed }) => [
-                  styles.primaryButton,
-                  pressed && styles.buttonPressed,
-                ]}
-              >
-                <Text style={styles.primaryButtonText}>
-                  Continue
-                </Text>
-
-                <Text style={styles.arrow}>→</Text>
-              </Pressable>
-            )}
-
-            <Text style={styles.footer}>
-              {result.passed
-                ? 'This image can now proceed to the next processing stage.'
-                : 'Please capture another image with better positioning or lighting.'}
-            </Text>
-          </View>
-        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function formatReason(reason: string): string {
-  switch (reason) {
-    case 'blur':
-      return 'Image is too blurry. Please hold the camera steady.';
-
-    case 'underexposed':
-      return 'Image is too dark. Please improve the lighting.';
-
-    case 'overexposed':
-      return 'Image is too bright. Please reduce strong lighting.';
-
-    case 'glare':
-      return 'Strong glare is affecting the image. Please adjust the lighting or camera angle.';
-
-    case 'bad_framing':
-      return 'The buccal cavity is not properly framed. Please reposition the camera.';
-
-    default:
-      return reason;
-  }
-}
-
-function QualityRow({
-  label,
-  description,
-  last = false,
-}: {
-  label: string;
-  description: string;
-  last?: boolean;
-}) {
+function StatusRow({ icon, label, color }: { icon: string; label: string; color: string }) {
   return (
-    <View
-      style={[
-        styles.qualityRow,
-        last && styles.lastQualityRow,
-      ]}
-    >
-      <View style={styles.pendingCircle}>
-        <Text style={styles.pendingText}>•</Text>
-      </View>
-
-      <View style={styles.qualityContent}>
-        <Text style={styles.qualityLabel}>
-          {label}
-        </Text>
-
-        <Text style={styles.qualityDescription}>
-          {description}
-        </Text>
-      </View>
+    <View style={statusRowStyles.row}>
+      <Text style={[statusRowStyles.icon, { color }]}>{icon}</Text>
+      <Text style={[statusRowStyles.label, { color }]}>{label}</Text>
     </View>
   );
 }
 
+function LegendStep({
+  number, label, done, active,
+}: {
+  number: string; label: string; done: boolean; active: boolean;
+}) {
+  return (
+    <View style={legendStyles.step}>
+      <View style={[
+        legendStyles.circle,
+        done && legendStyles.circleDone,
+        active && legendStyles.circleActive,
+      ]}>
+        <Text style={[legendStyles.num, (done || active) && legendStyles.numActive]}>
+          {done ? '✓' : number}
+        </Text>
+      </View>
+      <Text style={[legendStyles.lbl, (done || active) && legendStyles.lblActive]}>{label}</Text>
+    </View>
+  );
+}
+
+function riskIcon(category: string | null) {
+  if (!category) return '?';
+  const c = category.toLowerCase();
+  if (c === 'low') return '✓';
+  if (c === 'medium' || c === 'moderate') return '⚠';
+  return '⛔';
+}
+
+function riskColor(category: string | null) {
+  if (!category) return '#94A3B8';
+  const c = category.toLowerCase();
+  if (c === 'low') return '#00D2B4';
+  if (c === 'medium' || c === 'moderate') return '#F59E0B';
+  return '#F43F5E';
+}
+
+function formatRisk(category: string | null) {
+  if (!category) return 'Unknown';
+  return category.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#F5F9F8',
+  safeArea: { flex: 1, backgroundColor: '#080C0E' },
+  container: { paddingHorizontal: 22, paddingTop: 24, paddingBottom: 38 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  brand: { fontSize: 16, fontWeight: '800', color: '#F8FAFC' },
+  section: { fontSize: 9, fontWeight: '700', color: '#00D2B4', letterSpacing: 1.1, marginTop: 2 },
+  stepBadge: { backgroundColor: '#16282E', borderWidth: 1, borderColor: '#00D2B4', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14 },
+  stepText: { color: '#00D2B4', fontSize: 11, fontWeight: '700' },
+  imageContainer: {
+    width: '100%', height: 210, borderRadius: 20, overflow: 'hidden',
+    backgroundColor: '#11171D', borderWidth: 1, borderColor: '#1E2B37', marginTop: 22,
+    position: 'relative',
   },
-
-  container: {
-    paddingHorizontal: 22,
-    paddingTop: 22,
-    paddingBottom: 40,
-  },
-
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-
-  brand: {
-    color: '#176B6B',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-
-  section: {
-    color: '#87969A',
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    marginTop: 3,
-  },
-
-  stepBadge: {
-    backgroundColor: '#E8F3F0',
-    borderRadius: 15,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-
-  stepText: {
-    color: '#176B6B',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-
-  patientCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+  image: { width: '100%', height: '100%' },
+  imageOverlayBadge: {
+    position: 'absolute',
+    bottom: 12,
+    left: 12,
+    backgroundColor: 'rgba(8,12,14,0.85)',
     borderWidth: 1,
-    borderColor: '#E0E9E7',
-    borderRadius: 15,
-    padding: 14,
-    marginTop: 23,
+    borderColor: '#243442',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
-
-  patientIcon: {
-    width: 45,
-    height: 45,
-    borderRadius: 23,
-    backgroundColor: '#E2F0ED',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-
-  patientIconText: {
-    color: '#176B6B',
-    fontSize: 18,
-    fontWeight: '800',
-  },
-
-  patientInfo: {
-    flex: 1,
-  },
-
-  patientLabel: {
-    color: '#87969A',
+  imageOverlayText: {
+    color: '#00D2B4',
     fontSize: 9,
-    fontWeight: '700',
+    fontWeight: '800',
     letterSpacing: 0.8,
   },
-
-  patientName: {
-    color: '#19323C',
-    fontSize: 16,
-    fontWeight: '700',
-    marginTop: 2,
-  },
-
-  patientId: {
-    color: '#72838A',
-    fontSize: 11,
-    marginTop: 2,
-  },
-
-  heading: {
-    marginTop: 25,
-    marginBottom: 18,
-  },
-
-  title: {
-    color: '#19323C',
-    fontSize: 27,
-    lineHeight: 34,
-    fontWeight: '700',
-  },
-
-  subtitle: {
-    color: '#657980',
-    fontSize: 13,
-    lineHeight: 20,
-    marginTop: 7,
-  },
-
-  imageCard: {
-    width: '100%',
-    height: 235,
-    borderRadius: 17,
-    overflow: 'hidden',
-    backgroundColor: '#DCE7E5',
-  },
-
-  image: {
-    width: '100%',
-    height: '100%',
-  },
-
-  noImage: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  noImageIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    textAlign: 'center',
-    textAlignVertical: 'center',
-    color: '#176B6B',
-    fontSize: 22,
-    fontWeight: '800',
-    overflow: 'hidden',
-  },
-
-  noImageText: {
-    color: '#718187',
-    fontSize: 12,
-    marginTop: 8,
-  },
-
-  checkCard: {
-    backgroundColor: '#FFFFFF',
+  statusCard: {
+    backgroundColor: '#11171D',
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: '#E0E9E7',
-    borderRadius: 17,
-    padding: 18,
-    marginTop: 15,
-  },
-
-  checkTitle: {
-    color: '#19323C',
-    fontSize: 17,
-    fontWeight: '700',
-    marginBottom: 17,
-  },
-
-  qualityRow: {
-    flexDirection: 'row',
-    marginBottom: 17,
-  },
-
-  lastQualityRow: {
-    marginBottom: 0,
-  },
-
-  pendingCircle: {
-    width: 27,
-    height: 27,
-    borderRadius: 14,
-    backgroundColor: '#E9F2F0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 11,
-  },
-
-  pendingText: {
-    color: '#176B6B',
-    fontSize: 17,
-    lineHeight: 17,
-  },
-
-  qualityContent: {
-    flex: 1,
-  },
-
-  qualityLabel: {
-    color: '#304A52',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-
-  qualityDescription: {
-    color: '#75868B',
-    fontSize: 11,
-    lineHeight: 17,
-    marginTop: 2,
-  },
-
-  primaryButton: {
-    minHeight: 53,
-    borderRadius: 12,
-    backgroundColor: '#176B6B',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    marginTop: 19,
-  },
-
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-    marginLeft: 8,
-  },
-
-  arrow: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    marginLeft: 9,
-  },
-
-  secondaryButton: {
-    height: 53,
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#176B6B',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 19,
-  },
-
-  secondaryButtonText: {
-    color: '#176B6B',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-
-  disabledButton: {
-    opacity: 0.7,
-  },
-
-  buttonPressed: {
-    opacity: 0.72,
-  },
-
-  resultCard: {
-    flexDirection: 'row',
-    borderRadius: 15,
-    padding: 15,
+    borderColor: '#1E2B37',
+    padding: 22,
     marginTop: 18,
-    borderWidth: 1,
+    minHeight: 130,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 8,
   },
-
-  resultPassed: {
-    backgroundColor: '#EEF7F4',
-    borderColor: '#CBE5DD',
-  },
-
-  resultFailed: {
-    backgroundColor: '#FFF5F2',
-    borderColor: '#F0D4CC',
-  },
-
-  resultIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+  spinnerRow: { alignItems: 'center', marginBottom: 16 },
+  phaseTitle: { fontSize: 17, fontWeight: '800', color: '#F8FAFC', textAlign: 'center' },
+  phaseSubtitle: { fontSize: 12, color: '#94A3B8', textAlign: 'center', marginTop: 6, lineHeight: 17 },
+  offlineText: { fontSize: 12, color: '#94A3B8', marginTop: 8, lineHeight: 18 },
+  viewBtn: {
+    marginTop: 18,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: '#00D2B4',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 11,
+    shadowColor: '#00D2B4',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 6,
   },
-
-  resultIconPassed: {
-    backgroundColor: '#D7ECE5',
-  },
-
-  resultIconFailed: {
-    backgroundColor: '#F6DDD6',
-  },
-
-  resultIconText: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#176B6B',
-  },
-
-  resultContent: {
-    flex: 1,
-  },
-
-  resultTitle: {
-    color: '#304A52',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-
-  resultReason: {
-    color: '#718187',
-    fontSize: 11,
-    lineHeight: 17,
-    marginTop: 3,
-  },
-
-  scoresContainer: {
-    marginTop: 8,
-  },
-
-  scoreText: {
-    color: '#718187',
-    fontSize: 10,
-    lineHeight: 16,
-  },
-
-  actionArea: {
-    marginTop: 0,
-  },
-
-  footer: {
-    color: '#87969A',
-    fontSize: 10,
-    lineHeight: 16,
-    textAlign: 'center',
+  viewBtnText: { color: '#080C0E', fontSize: 15, fontWeight: '800', letterSpacing: 0.2 },
+  retryBtn: {
     marginTop: 12,
-    paddingHorizontal: 15,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: '#16282E',
+    borderWidth: 1,
+    borderColor: '#00D2B4',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  retryBtnText: { color: '#00D2B4', fontSize: 13, fontWeight: '800' },
+  backBtn: { marginTop: 12, alignItems: 'center', paddingVertical: 10 },
+  backBtnText: { color: '#00D2B4', fontSize: 14, fontWeight: '700' },
+  legend: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 30,
+    paddingHorizontal: 6,
+  },
+  legendLine: { flex: 1, height: 2, backgroundColor: '#1E2B37', marginHorizontal: 6 },
+  legendLineActive: { backgroundColor: '#00D2B4' },
+});
+
+const statusRowStyles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'flex-start', marginVertical: 8 },
+  icon: { fontSize: 18, marginRight: 10, lineHeight: 24, fontWeight: '900' },
+  label: { flex: 1, fontSize: 14, lineHeight: 22, fontWeight: '700' },
+});
+
+const legendStyles = StyleSheet.create({
+  step: { alignItems: 'center', width: 80 },
+  circle: {
+    width: 34, height: 34, borderRadius: 12,
+    backgroundColor: '#11171D', borderWidth: 1, borderColor: '#1E2B37',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  circleDone: { backgroundColor: '#16282E', borderColor: '#00D2B4' },
+  circleActive: { backgroundColor: '#00D2B4', borderColor: '#00D2B4' },
+  num: { fontSize: 12, fontWeight: '800', color: '#64748B' },
+  numActive: { color: '#080C0E' },
+  lbl: { fontSize: 10, color: '#64748B', marginTop: 6, textAlign: 'center', fontWeight: '600' },
+  lblActive: { color: '#00D2B4', fontWeight: '700' },
 });
