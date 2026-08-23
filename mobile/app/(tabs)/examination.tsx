@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
-import { getActiveBaseUrl } from '@/hooks/use-auth';
+import { getActiveBaseUrl, getOrFetchToken } from '@/hooks/use-auth';
 
 const CLINICAL_SAMPLES = [
   { id: '01_good_mucosa.jpg', title: 'Good Mucosa', tag: 'Standard Oral Cavity', icon: '🩺', color: '#00D2B4' },
@@ -82,6 +82,7 @@ export default function ExaminationScreen() {
   const handleSelectSample = async (sampleId: string) => {
     try {
       setLoadingSample(sampleId);
+      await getOrFetchToken();
       const baseUrl = getActiveBaseUrl();
       const sampleUrl = `${baseUrl}/sample-images/${sampleId}`;
       const localTarget = `${FileSystem.cacheDirectory}${sampleId}`;

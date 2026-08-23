@@ -61,9 +61,9 @@ export default function ResultsScreen() {
             <Text style={styles.brand}>OralCare AI</Text>
             <Text style={styles.section}>CLINICAL DIAGNOSTICS</Text>
           </View>
-          <View style={styles.completeBadge}>
+          <Pressable style={styles.completeBadge} onPress={handleDone}>
             <Text style={styles.completeBadgeText}>Complete ✓</Text>
-          </View>
+          </Pressable>
         </View>
 
         {/* Patient Pill */}
@@ -77,73 +77,104 @@ export default function ResultsScreen() {
           </View>
         </View>
 
-        {/* ── Luminous Neon Risk Card ── */}
-        <View style={[styles.riskCard, { backgroundColor: bgColor, borderColor: borderColor }]}>
-          <Text style={styles.riskIcon}>{getRiskEmoji(riskCategory, cannotAssess)}</Text>
+        {/* Risk Assessment Hero */}
+        <View
+          style={[
+            styles.riskCard,
+            { backgroundColor: bgColor, borderColor },
+          ]}
+        >
+          <Text style={styles.riskEmoji}>{getRiskEmoji(riskCategory, cannotAssess)}</Text>
           <Text style={[styles.riskLabel, { color: riskColor }]}>{riskLabel}</Text>
-          <Text style={styles.riskDescription}>{description}</Text>
+          <Text style={styles.riskDesc}>{description}</Text>
 
-          {confidence !== null && !cannotAssess && (
+          {confidence !== null && !cannotAssess ? (
             <View style={styles.confidenceRow}>
               <Text style={styles.confidenceLabel}>Neural Model Confidence</Text>
               <Text style={[styles.confidenceValue, { color: riskColor }]}>
                 {(confidence * 100).toFixed(1)}%
               </Text>
             </View>
-          )}
+          ) : null}
 
           {params.modelVersion ? (
-            <Text style={styles.modelVersion}>Architecture: {params.modelVersion}</Text>
+            <Text style={styles.modelVer}>Architecture: {params.modelVersion}</Text>
           ) : null}
         </View>
 
-        {/* ── Dark Quality Audit Card ── */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.cardTitle}>OpenCV Quality Matrix</Text>
+        {/* OpenCV Quality Audit Matrix */}
+        <View style={styles.qualityCard}>
+          <Text style={styles.qualityTitle}>OpenCV Quality Matrix</Text>
 
           <QualityRow
             label="Overall Assessment"
-            value={qualityPassed ? 'PASSED ✓' : 'FAILED ✗'}
+            value={qualityPassed ? 'PASSED ✓' : 'FLAGGED ⚠️'}
             valueColor={qualityPassed ? '#00D2B4' : '#F43F5E'}
           />
 
-          {!qualityPassed && params.qualityReason ? (
-            <QualityRow label="Primary Failure" value={params.qualityReason} valueColor="#F43F5E" />
+          {blurScore !== null ? (
+            <QualityRow
+              label="Laplacian Blur Score"
+              value={blurScore.toFixed(2)}
+              valueColor={blurScore >= 100 ? '#00D2B4' : '#F43F5E'}
+              info="Target: > 100.0"
+            />
           ) : null}
 
-          {blurScore !== null && (
-            <QualityRow label="Laplacian Blur Score" value={blurScore.toFixed(2)} info="Target: > 100.0" />
-          )}
-          {brightnessScore !== null && (
-            <QualityRow label="Illumination Index" value={brightnessScore.toFixed(2)} info="Target: 0.25 – 0.85" />
-          )}
-          {glareAreaPct !== null && (
-            <QualityRow label="Reflective Glare" value={`${glareAreaPct.toFixed(1)}%`} info="Target: < 5.0%" />
-          )}
-          {framingConfidence !== null && (
-            <QualityRow label="Viewfinder Alignment" value={`${(framingConfidence * 100).toFixed(0)}%`} info="Mucosa centring" />
-          )}
+          {brightnessScore !== null ? (
+            <QualityRow
+              label="Illumination Index"
+              value={brightnessScore.toFixed(2)}
+              valueColor={brightnessScore >= 0.25 && brightnessScore <= 200 ? '#00D2B4' : '#F59E0B'}
+              info="Target: 0.25 – 0.85"
+            />
+          ) : null}
 
-          {failedReasons.length > 0 && (
-            <View style={styles.failedList}>
-              <Text style={styles.failedTitle}>Sub-threshold Checks:</Text>
+          {glareAreaPct !== null ? (
+            <QualityRow
+              label="Reflective Glare"
+              value={`${glareAreaPct.toFixed(1)}%`}
+              valueColor={glareAreaPct <= 5.0 ? '#00D2B4' : '#F43F5E'}
+              info="Target: < 5.0%"
+            />
+          ) : null}
+
+          {framingConfidence !== null ? (
+            <QualityRow
+              label="Viewfinder Alignment"
+              value={`${(framingConfidence * 100).toFixed(0)}%`}
+              valueColor="#00D2B4"
+              info="Mucosa centring"
+            />
+          ) : null}
+
+          {failedReasons.length > 0 ? (
+            <View style={styles.failedBox}>
+              <Text style={styles.failedBoxTitle}>Quality Warnings Noted:</Text>
               {failedReasons.map((r, i) => (
-                <Text key={i} style={styles.failedItem}>• {r.replace(/_/g, ' ').toUpperCase()}</Text>
+                <Text key={i} style={styles.failedReason}>• {r}</Text>
               ))}
             </View>
-          )}
+          ) : null}
         </View>
 
-        {/* ── Case Telemetry Info ── */}
+        {/* Case ID banner */}
         {params.caseId ? (
           <View style={styles.caseInfo}>
             <Text style={styles.caseInfoText}>TELEMETRY ID: {params.caseId}</Text>
           </View>
         ) : null}
 
-        {/* Action button */}
+        {/* Action buttons */}
         <Pressable style={styles.doneBtn} onPress={handleDone}>
           <Text style={styles.doneBtnText}>Initialize New Screening →</Text>
+        </Pressable>
+
+        <Pressable
+          style={styles.archiveBtn}
+          onPress={() => router.push('/(tabs)/patient-history')}
+        >
+          <Text style={styles.archiveBtnText}>View in Patient Archive 📋</Text>
         </Pressable>
 
         <Text style={styles.footer}>
@@ -259,9 +290,9 @@ const styles = StyleSheet.create({
     shadowColor: '#000000', shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.5, shadowRadius: 18, elevation: 8,
   },
-  riskIcon: { fontSize: 44, marginBottom: 10 },
+  riskEmoji: { fontSize: 44, marginBottom: 10 },
   riskLabel: { fontSize: 26, fontWeight: '900', marginBottom: 8, letterSpacing: -0.4 },
-  riskDescription: { fontSize: 13, lineHeight: 20, color: '#94A3B8', textAlign: 'center', maxWidth: 320 },
+  riskDesc: { fontSize: 13, lineHeight: 20, color: '#94A3B8', textAlign: 'center', maxWidth: 320 },
   confidenceRow: {
     flexDirection: 'row', justifyContent: 'space-between',
     width: '100%', marginTop: 18, paddingTop: 16,
@@ -269,30 +300,38 @@ const styles = StyleSheet.create({
   },
   confidenceLabel: { fontSize: 13, color: '#94A3B8', fontWeight: '500' },
   confidenceValue: { fontSize: 15, fontWeight: '800' },
-  modelVersion: { fontSize: 10, color: '#64748B', marginTop: 10, letterSpacing: 0.5 },
+  modelVer: { fontSize: 10, color: '#64748B', marginTop: 10, letterSpacing: 0.5 },
 
-  sectionCard: {
+  qualityCard: {
     backgroundColor: '#11171D', borderRadius: 18,
     borderWidth: 1, borderColor: '#1E2B37', padding: 18, marginBottom: 16,
   },
-  cardTitle: { fontSize: 15, fontWeight: '700', color: '#F1F5F9', marginBottom: 12 },
-  failedList: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#1E2B37' },
-  failedTitle: { fontSize: 11, fontWeight: '700', color: '#F43F5E', marginBottom: 6, letterSpacing: 0.5 },
-  failedItem: { fontSize: 11, color: '#F43F5E', lineHeight: 18, fontWeight: '600' },
+  qualityTitle: { fontSize: 15, fontWeight: '700', color: '#F1F5F9', marginBottom: 12 },
+  failedBox: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#1E2B37' },
+  failedBoxTitle: { fontSize: 11, fontWeight: '700', color: '#F43F5E', marginBottom: 6, letterSpacing: 0.5 },
+  failedReason: { fontSize: 11, color: '#F43F5E', lineHeight: 18, fontWeight: '600' },
 
   caseInfo: { alignItems: 'center', marginBottom: 10 },
   caseInfoText: { fontSize: 10, color: '#64748B', letterSpacing: 0.8, fontWeight: '600' },
 
   doneBtn: {
     height: 54, borderRadius: 14, backgroundColor: '#00D2B4',
-    alignItems: 'center', justifyContent: 'center', marginBottom: 18,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 12,
     shadowColor: '#00D2B4', shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4, shadowRadius: 12, elevation: 6,
+    shadowOpacity: 0.35, shadowRadius: 14, elevation: 6,
   },
-  doneBtnText: { color: '#080C0E', fontSize: 15, fontWeight: '800', letterSpacing: 0.2 },
+  doneBtnText: { fontSize: 15, fontWeight: '800', color: '#080C0E', letterSpacing: 0.3 },
+
+  archiveBtn: {
+    height: 50, borderRadius: 14, backgroundColor: '#16232D',
+    borderWidth: 1, borderColor: '#1E3A4C',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 18,
+  },
+  archiveBtnText: { fontSize: 14, fontWeight: '700', color: '#38BDF8', letterSpacing: 0.2 },
+
   footer: {
-    fontSize: 10, lineHeight: 15, color: '#64748B',
-    textAlign: 'center', paddingHorizontal: 12,
+    fontSize: 10, color: '#475569', textAlign: 'center',
+    lineHeight: 16, paddingHorizontal: 12, fontWeight: '500',
   },
 });
 

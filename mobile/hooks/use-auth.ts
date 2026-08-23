@@ -1,15 +1,31 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
 import { API_BASE_URL, EMULATOR_API_BASE_URL, HEALTH_WORKER_CREDENTIALS } from '@/constants/api';
 
 const TOKEN_KEY = '@oralcare_auth_token';
 const ACTIVE_HOST_KEY = '@oralcare_active_host';
 
 let _cachedToken: string | null = null;
-let _activeBaseUrl: string = EMULATOR_API_BASE_URL;
+let _activeBaseUrl: string = API_BASE_URL;
 
 export function getActiveBaseUrl(): string {
   return _activeBaseUrl;
+}
+
+export async function setCustomHost(hostUrl: string): Promise<boolean> {
+  const cleanUrl = hostUrl.trim().replace(/\/+$/, '');
+  try {
+    const token = await tryLoginAtHost(cleanUrl);
+    if (token) {
+      _cachedToken = token;
+      _activeBaseUrl = cleanUrl;
+      await AsyncStorage.setItem(TOKEN_KEY, token);
+      await AsyncStorage.setItem(ACTIVE_HOST_KEY, cleanUrl);
+      return true;
+    }
+  } catch (err) {
+    console.error('Custom host connection test failed:', err);
+  }
+  return false;
 }
 
 async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 2500): Promise<Response> {
@@ -27,7 +43,7 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 2
 
 async function tryLoginAtHost(baseUrl: string): Promise<string | null> {
   try {
-    const health = await fetchWithTimeout(`${baseUrl}/health`, { method: 'GET' }, 1500);
+    const health = await fetchWithTimeout(`${baseUrl}/health`, { method: 'GET' }, 1800);
     if (!health.ok) return null;
 
     const loginRes = await fetchWithTimeout(`${baseUrl}/auth/login`, {
@@ -86,8 +102,8 @@ async function getOrFetchToken(): Promise<string> {
 
   const candidateHosts = [
     savedHost,
-    EMULATOR_API_BASE_URL,
     API_BASE_URL,
+    EMULATOR_API_BASE_URL,
     'http://127.0.0.1:8000',
     'http://localhost:8000',
   ].filter((h): h is string => Boolean(h));
