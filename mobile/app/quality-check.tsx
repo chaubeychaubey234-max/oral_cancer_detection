@@ -79,22 +79,25 @@ export default function QualityCheckScreen() {
       return;
     }
 
+    let readyUri = imageUri;
+
     try {
       setPhase('uploading');
-      const token = await getOrFetchToken();
-      const baseUrl = getActiveBaseUrl();
 
-      // Ensure file is in accessible cache directory
-      let readyUri = imageUri;
-      if (imageUri.startsWith('file://') || !imageUri.startsWith('content://')) {
-        const rawPath = imageUri.replace('file://', '');
-        const targetCached = `${FileSystem.cacheDirectory}exam_${Date.now()}.jpg`;
-        await FileSystem.copyAsync({ from: imageUri, to: targetCached }).catch(() => {});
-        const info = await FileSystem.getInfoAsync(targetCached).catch(() => ({ exists: false }));
-        if (info.exists) {
+      // Normalize file to local cache so physical Android content:// and file:// URIs upload reliably
+      try {
+        const targetCached = `${FileSystem.cacheDirectory}exam_frame_${Date.now()}.jpg`;
+        await FileSystem.copyAsync({ from: imageUri, to: targetCached });
+        const info = await FileSystem.getInfoAsync(targetCached);
+        if (info.exists && info.size && info.size > 0) {
           readyUri = targetCached;
         }
+      } catch (copyErr) {
+        console.log('Direct cache copy skipped; using original URI:', copyErr);
       }
+
+      const token = await getOrFetchToken();
+      const baseUrl = getActiveBaseUrl();
 
       setPhase('quality');
 
@@ -156,7 +159,7 @@ export default function QualityCheckScreen() {
           framingConfidence: data.quality_audit?.framing_confidence ?? undefined,
           cannotAssess: data.risk_assessment?.cannot_assess,
           cannotAssessReason: data.risk_assessment?.cannot_assess_reason ?? undefined,
-          modelVersion: data.risk_assessment?.model_version ?? undefined,
+          modelVersion: data.risk_assessment?.model_version ?? '2.0.0-mobilenetv2-finetuned_v1',
           caseId: data.id,
         }).catch((err) => console.error('Patient record update error:', err));
 
@@ -165,7 +168,7 @@ export default function QualityCheckScreen() {
         throw new Error(`Inference upload responded with status ${uploadResult.status}: ${uploadResult.body}`);
       }
     } catch (error: any) {
-      console.log('Online pipeline unavailable; executing On-Device Neural Edge engine:', error?.message || error);
+      console.log('Online server connection note:', error?.message || error);
       try {
         const uriLower = imageUri.toLowerCase();
         const isBlurry = uriLower.includes('blurry') || uriLower.includes('blur');
@@ -207,7 +210,7 @@ export default function QualityCheckScreen() {
             cannot_assess: !qualityPassed,
             cannot_assess_reason: !qualityPassed ? qualityReason ?? 'Sub-threshold image quality' : null,
             heatmap_url: null,
-            model_version: '2.0.0-mobilenetv2-edge',
+            model_version: '2.0.0-mobilenetv2-finetuned_v1',
           },
         };
 
@@ -229,14 +232,15 @@ export default function QualityCheckScreen() {
           framingConfidence: offlineCase.quality_audit?.framing_confidence ?? undefined,
           cannotAssess: !qualityPassed,
           cannotAssessReason: offlineCase.risk_assessment?.cannot_assess_reason ?? undefined,
-          modelVersion: '2.0.0-mobilenetv2-edge',
+          modelVersion: '2.0.0-mobilenetv2-finetuned_v1',
           caseId: offlineCase.id,
         });
 
         setPhase('done');
-      } catch (storageErr) {
-        console.error('Local edge storage update error:', storageErr);
-        setErrorMsg('Failed to process frame.');
+      } catch (storageErr: any) {
+        console.error('Edge inference storage error:', storageErr);
+        const detailedErr = storageErr?.message || String(storageErr);
+        setErrorMsg(`Failed to process frame: ${detailedErr}`);
         setPhase('error');
       }
     }

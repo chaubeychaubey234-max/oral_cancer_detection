@@ -43,7 +43,7 @@ _cached_model_path = None
 
 def get_model_path() -> Path:
     """Resolves model path from environment variable or standard paths."""
-    env_path = os.getenv("MODEL_PATH", "models/baseline_v2_best.keras")
+    env_path = os.getenv("MODEL_PATH", "models/finetuned_v1_best.keras")
     p = Path(env_path)
     if p.is_absolute() and p.exists():
         return p
